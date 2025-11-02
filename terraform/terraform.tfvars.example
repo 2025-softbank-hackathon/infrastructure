@@ -1,0 +1,33 @@
+# AWS Configuration
+aws_region   = "ap-northeast-1"
+project_name = "chatapp"
+environment  = "dev"
+
+# VPC Configuration (2 AZs for ALB requirement, but cost-optimized with single NAT)
+vpc_cidr             = "10.0.0.0/16"
+availability_zones   = ["ap-northeast-1a", "ap-northeast-1c"]
+public_subnet_cidrs  = ["10.0.1.0/24", "10.0.2.0/24"]
+private_subnet_cidrs = ["10.0.11.0/24", "10.0.12.0/24"]
+
+# ECS Configuration (Hackathon: Minimal resources)
+container_image  = "nginx:latest"  # TODO: Replace with your chat app image from ECR
+container_port   = 3000
+fargate_cpu      = 256  # 0.25 vCPU
+fargate_memory   = 512  # 0.5 GB
+desired_count    = 1    # Minimal for cost saving (Blue=1, Green=1)
+
+# Blue/Green Deployment (Demo: Start with Blue-dominant)
+blue_weight  = 90
+green_weight = 10
+
+# ElastiCache Redis (Single node for cost saving)
+redis_node_type       = "cache.t3.micro"
+redis_num_cache_nodes = 1
+redis_engine_version  = "7.0"
+
+# DynamoDB (On-Demand for cost efficiency)
+dynamodb_billing_mode = "PAY_PER_REQUEST"
+
+# S3 Bucket for CloudFront (Must be globally unique)
+s3_bucket_name = ""  # Example: "chatapp-hackathon-static-20250103"
+                     # Leave empty to auto-generate with random suffix
