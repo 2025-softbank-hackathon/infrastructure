@@ -36,24 +36,28 @@
 - **Application Load Balancer**: 트래픽 분산 및 가중치 기반 라우팅
 
 #### 4. 데이터 계층
-- **DynamoDB**: NoSQL 데이터베이스
+- **DynamoDB**: Single Source of Truth
   - `messages` 테이블: 단일 채팅창 메시지 저장 (PK: pk="CHAT", TTL: 1시간)
   - 닉네임: Guest-XXXX 형식 (백엔드에서 랜덤 생성)
-- **ElastiCache Redis**: 인메모리 캐싱 및 Pub/Sub
+  - Query 성능: 매우 빠름 (Redis 캐싱 불필요)
+- **ElastiCache Redis**: Pub/Sub 전용 (저장 안함)
   - **멀티 AZ 구성**: 프라이머리 1개 + 리드 리플리카 1개
   - cache.t4g.micro 인스턴스 타입
   - 자동 페일오버 활성화
-  - 메시지 브로드캐스트용 Pub/Sub 채널
+  - **용도**: 실시간 메시지 브로드캐스트 + Rate Limiting만
+  - **중요**: 메시지를 Redis에 저장하지 않음 (Dual-Write 문제 방지)
 
 #### 5. 네트워킹
 - **VPC**: 격리된 네트워크 환경 (10.0.0.0/16)
-  - 퍼블릭 서브넷 2개: ALB, NAT Gateway
+  - 퍼블릭 서브넷 2개: ALB, NAT Gateway (각 AZ에 1개씩)
   - 프라이빗 서브넷 2개: ECS Tasks, ElastiCache
-- **IGW**: 인터넷 게이트웨이 연결
-- **NAT Gateway**: 1개만 배치 (비용 절감)
-  - 첫 번째 AZ(2a)에만 배치
-  - 두 AZ의 프라이빗 서브넷이 공유 사용
-- **VPC Endpoint**: DynamoDB 프라이빗 액세스
+- **IGW (Internet Gateway)**: VPC와 인터넷 간 통신
+  - 사용자 → IGW → ALB 경로로 트래픽 진입
+- **NAT Gateway**: 2개 배치 (각 AZ마다 1개씩 - 고가용성)
+  - ap-northeast-2a Public Subnet에 NAT Gateway #1
+  - ap-northeast-2c Public Subnet에 NAT Gateway #2
+  - 각 AZ의 Private Subnet이 해당 AZ의 NAT 사용
+  - Private Subnet의 Fargate → NAT → 인터넷 (ECR, DynamoDB Public Endpoint 등)
 
 #### 6. 보안
 - **ALB Security Group**: 443만 인바운드 오픈
@@ -83,9 +87,12 @@
 
 3. **데이터 액세스**:
    ```
-   ECS Fargate → VPC Endpoint → DynamoDB
-   ECS Fargate → ElastiCache Redis (리전 엔드포인트)
+   ECS Fargate → NAT Gateway → DynamoDB Public Endpoint (메시지 저장/조회)
+   ECS Fargate → ElastiCache Redis (Private Subnet, Pub/Sub 전용, 저장 안함)
    ```
+   **중요:**
+   - Redis는 메시지를 저장하지 않고 Pub/Sub로 브로드캐스트만 수행
+   - DynamoDB는 VPC Endpoint 없이 NAT Gateway를 통해 Public Endpoint로 접근 (구성 단순화)
 
 4. **컨테이너 이미지 관리**:
    ```
@@ -131,14 +138,14 @@
   - ALB: 2개 AZ에 분산
   - ECS Fargate: 2개 AZ에 배포 가능
   - Redis: 프라이머리 + 리드 리플리카 (자동 페일오버)
+  - NAT Gateway: 각 AZ마다 1개씩 배치 (고가용성)
 - **DynamoDB**: On-Demand 모드로 자동 확장
 - **ECS Auto Scaling**: 향후 구현 가능
-- **NAT Gateway**: 1개 사용 (비용 우선)
-  - 프로덕션 환경에서는 각 AZ마다 NAT 배치 권장
+- **고가용성 확보**: AZ 단위 장애 시에도 서비스 지속 가능
 
 ### 해커톤/데모용 비용 최적화
 
-- **단일 NAT Gateway**: 1개만 사용, 두 AZ가 공유 (월 ~$32 절감)
+- **NAT Gateway**: 2개 사용 (각 AZ마다 1개씩, 고가용성 확보)
 - **최소 ECS Tasks**: Blue=1, Green=1 (데모용 최소 구성)
 - **작은 인스턴스**:
   - Fargate: 256 CPU, 512 MB 메모리
@@ -150,7 +157,7 @@
 - **Auto Scaling 없음**: 데모용 고정 리소스
 - **로그 보관 기간**: 7일로 제한
 
-**예상 비용**: 월 ~$70-90 (해커톤/데모 환경)
+**예상 비용**: 월 ~$110-130 (해커톤/데모 환경)
 
 ### 가용 영역(AZ) 구성
 
@@ -161,18 +168,17 @@
 #### 리소스 배치
 - **퍼블릭 서브넷 2개**:
   - ALB ENI가 각 AZ에 배치 (AWS 요구사항)
-  - NAT Gateway는 첫 번째 AZ(2a)에만 1개 배치
+  - NAT Gateway 각 AZ에 1개씩 배치 (총 2개)
 - **프라이빗 서브넷 2개**:
   - ECS Fargate 태스크가 배포 가능 (Blue/Green 각 1개)
   - Redis: 프라이머리(AZ-a) + 리플리카(AZ-c)
+  - 각 AZ의 프라이빗 서브넷이 해당 AZ의 NAT Gateway 사용
 
-#### NAT Gateway 트레이드오프
-- **현재 구성**: 1개 NAT (비용 우선)
-  - 두 AZ의 프라이빗 서브넷이 단일 NAT 공유
-  - 해당 AZ 장애 시 외부 통신 불가 (ECR 이미지 Pull 등)
-  - **데모 특성상 허용 가능**
-- **AWS 권장**: 각 AZ마다 NAT 1개씩 (고가용성 우선)
-  - 프로덕션 환경에서는 권장
+#### NAT Gateway 고가용성
+- **현재 구성**: 2개 NAT (고가용성 우선)
+  - 각 AZ의 프라이빗 서브넷이 해당 AZ의 NAT 사용
+  - 하나의 AZ 장애 시에도 다른 AZ는 정상 동작
+  - 프로덕션 레벨 고가용성 확보
 
 ## 아키텍처 다이어그램
 
@@ -180,7 +186,7 @@
 
 ## 향후 개선 사항 (프로덕션)
 
-- [ ] **고가용성**: 각 AZ마다 NAT Gateway 배치
+- [x] **고가용성**: 각 AZ마다 NAT Gateway 배치 (완료)
 - [ ] **Auto Scaling**: ECS 서비스 자동 확장 정책
 - [ ] **도메인**: Route53 + ACM 인증서를 통한 HTTPS
 - [ ] **보안 강화**: WAF 규칙, GuardDuty, Security Hub

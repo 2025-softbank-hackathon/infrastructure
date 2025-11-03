@@ -22,17 +22,17 @@
 
 - **컴퓨트**: ECS Fargate, ECS (Orchestration)
 - **컨테이너 레지스트리**: ECR (Elastic Container Registry)
-- **네트워크**: VPC, ALB (Public), IGW, NAT Gateway, CloudFront
-- **데이터베이스**: DynamoDB, ElastiCache Redis (멀티 AZ)
+- **네트워크**: VPC, ALB (Public), IGW, NAT Gateway (각 AZ마다 1개, 총 2개), CloudFront
+- **데이터베이스**: DynamoDB (Public Endpoint via NAT), ElastiCache Redis (멀티 AZ)
 - **스토리지**: S3 (정적 콘텐츠, ALB 로그)
-- **보안**: IAM, Security Groups, VPC Endpoints, VPC
+- **보안**: IAM, Security Groups, VPC
 - **모니터링**: CloudWatch (알람, 메트릭, 로그), X-ray
 
 ### 주요 변경사항
 - **리전**: ap-northeast-2 (서울)
-- **트래픽 진입**: API Gateway 제거, Public ALB 직접 사용
-- **Redis**: 멀티 AZ (프라이머리 + 리드 리플리카)
-- **NAT Gateway**: 1개만 사용 (비용 절감)
+- **트래픽 진입**: API Gateway 제거, Public ALB 직접 사용 (IGW → ALB)
+- **Redis**: 멀티 AZ, Pub/Sub 전용 (메시지 저장 안함)
+- **NAT Gateway**: 2개 사용 (각 AZ마다 1개씩, 고가용성 확보)
 - **모니터링**: CloudWatch 알람, ALB 액세스 로그
 
 ## Prerequisites (사전 요구사항)
@@ -399,28 +399,30 @@ AWS 콘솔에서 다음 메트릭 확인:
   - Blue: 1 task (0.25 vCPU, 0.5 GB)
   - Green: 1 task (0.25 vCPU, 0.5 GB)
 - **ALB**: ~$20-25/월 (단일 ALB)
-- **NAT Gateway**: ~$32/월 (1개만 사용, 비용 최적화)
+- **NAT Gateway**: ~$64/월 (2개, 각 AZ마다 1개씩 - 고가용성)
 - **ElastiCache (t4g.micro)**: ~$15/월 (멀티 AZ: 프라이머리 + 리플리카)
 - **DynamoDB (On-Demand)**: ~$5/월 (낮은 트래픽)
 - **CloudFront**: ~$1/월 (최소 트래픽)
 - **S3**: ~$1/월 (정적 콘텐츠 + ALB 로그)
 - **VPC, Security Groups**: 무료
 
-**총 예상 비용**: ~$70-90/월
+**총 예상 비용**: ~$110-130/월
 
 ### 프로덕션 대비 비용 절감
 | 항목 | 프로덕션 | 해커톤 | 절감액 |
 |------|-----------|-----------|---------|
-| NAT Gateway | 2 AZs | 1 AZ | ~$32/월 |
+| NAT Gateway | 2 AZs | 2 AZs | $0 (고가용성 확보) |
 | ECS Tasks | 4+ tasks | 2 tasks | ~$30/월 |
 | ElastiCache | 단일 노드 | 멀티 AZ | $0 (가용성 우선) |
 | 백업 | 활성화 | 비활성화 | ~$10/월 |
-| **총 절감액** | | | **~$72/월** |
+| **총 절감액** | | | **~$40/월** |
 
 ### 추가 비용 절감 팁
 1. **데모 외 시간에 중지**: ECS 태스크를 0으로 스케일링
 2. **Fargate Spot 사용**: ~70% 저렴 (단, 중단 가능)
 3. **해커톤 후 삭제**: `terraform destroy` 실행!
+
+**참고**: NAT Gateway는 시간당 과금이므로 사용하지 않을 때는 인프라 전체를 중지하는 것이 좋습니다.
 
 ## 리소스 정리
 
@@ -454,7 +456,7 @@ aws ec2 describe-nat-gateways --filter "Name=state,Values=available" --region ap
 
 ### 비용 알림
 
-삭제를 잊으면 월 ~$70-90의 요금이 계속 청구됩니다. CloudWatch 요금 알람 설정을 권장합니다!
+삭제를 잊으면 월 ~$110-130의 요금이 계속 청구됩니다. CloudWatch 요금 알람 설정을 권장합니다!
 
 ## 문제 해결
 

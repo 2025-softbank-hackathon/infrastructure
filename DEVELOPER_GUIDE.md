@@ -13,10 +13,13 @@
 
 ```
 클라이언트 → ALB → ECS(Fargate) 백엔드
-                     ├─ (1) DynamoDB에 메시지 저장
-                     ├─ (2) Redis에 Publish
-                     └─ (3) 구독 중인 다른 인스턴스가 실시간 전송
+                     ├─ (1) DynamoDB에 저장 (Single Source of Truth)
+                     └─ (2) Redis Pub/Sub 발행 → 모든 인스턴스가 실시간 수신
 ```
+
+**핵심:**
+- DynamoDB: 영구 저장 (pk="CHAT" Query는 매우 빠름)
+- Redis: 실시간 전파만 (저장 없음, Dual-Write 문제 없음)
 
 ---
 
@@ -37,13 +40,17 @@
 
 ---
 
-## Redis 캐시
+## Redis 사용 (Pub/Sub + Rate Limiting만)
 
-| 용도 | 타입 | 키 | TTL |
-|------|------|-----|-----|
-| 온라인 사용자 | Set | `online:users` | - |
-| 최근 메시지 캐시 | List | `recent:messages` | 1시간 |
-| Rate Limiting | String | `limit:{userId}` | 60초 |
+| 용도 | 타입 | 키/채널 | TTL | 설명 |
+|------|------|---------|-----|------|
+| 실시간 브로드캐스트 | Pub/Sub | `chat` | - | 메시지 전파 전용 (저장 안함) |
+| Rate Limiting | String | `limit:{nickname}` | 60초 | 1분에 10개 제한 |
+
+**중요 원칙:**
+- **메시지를 Redis에 저장하지 않음** (Dual-Write 문제 방지)
+- **DynamoDB가 Single Source of Truth** (Query 성능 충분히 빠름)
+- **Redis Pub/Sub는 실시간 전달만** (데이터 저장 아님)
 
 ---
 
@@ -120,7 +127,7 @@ public class MessageRepository {
 
 ---
 
-### 4. Redis Pub/Sub
+### 4. Redis Pub/Sub (캐시 저장 없음, 전파만)
 
 ```java
 @Service
@@ -128,26 +135,23 @@ public class RedisPubSubService {
     private final RedisTemplate<String, Object> redis;
     private static final String CHANNEL = "chat";
 
-    // 메시지 발행
+    // 실시간 브로드캐스트 (저장 안함!)
     public void publish(ChatMessage msg) {
         redis.convertAndSend(CHANNEL, msg);
-    }
-
-    // 메시지 캐싱
-    public void cacheMessage(ChatMessage msg) {
-        redis.opsForList().leftPush("recent:messages", msg);
-        redis.opsForList().trim("recent:messages", 0, 99);
-        redis.expire("recent:messages", 1, TimeUnit.HOURS);
     }
 
     // Rate Limiting
     public boolean checkLimit(String nickname) {
         Long count = redis.opsForValue().increment("limit:" + nickname);
-        if (count == 1) redis.expire("limit:" + nickname, 60, TimeUnit.SECONDS);
-        return count <= 10;
+        if (count == 1) {
+            redis.expire("limit:" + nickname, 60, TimeUnit.SECONDS);
+        }
+        return count <= 10;  // 1분에 10개 제한
     }
 }
 ```
+
+**핵심:** Redis는 메시지를 **저장하지 않고** Pub/Sub로 **전달만** 합니다!
 
 ---
 
@@ -169,24 +173,22 @@ public class ChatController {
 
     @PostMapping("/send")
     public void send(@RequestBody MessageDto dto) {
-        // Rate Limiting
+        // Rate Limiting 체크
         if (!redisService.checkLimit(dto.nickname())) {
             throw new RuntimeException("Too many messages");
         }
 
-        // 1. DynamoDB에 저장
+        // 1. DynamoDB에 저장 (Single Source of Truth)
         ChatMessage msg = new ChatMessage(dto.nickname(), dto.message());
         messageRepo.save(msg);
 
-        // 2. Redis에 캐싱
-        redisService.cacheMessage(msg);
-
-        // 3. Redis Pub/Sub로 브로드캐스트
+        // 2. Redis Pub/Sub로 브로드캐스트 (저장 안함!)
         redisService.publish(msg);
     }
 
     @GetMapping("/messages")
     public List<ChatMessage> getMessages() {
+        // DynamoDB에서 직접 조회 (충분히 빠름!)
         return messageRepo.getRecent(100);
     }
 
@@ -216,8 +218,9 @@ curl http://localhost:8080/api/messages
 ## 구현 체크리스트
 
 - [ ] DynamoDB 테이블 생성 (pk="CHAT", TTL 1시간)
-- [ ] Redis 연결 설정
+- [ ] Redis 연결 설정 (Pub/Sub + Rate Limiting만)
 - [ ] 닉네임 랜덤 생성 (Guest-XXXX)
-- [ ] 메시지 저장 → Redis Publish 플로우
+- [ ] 메시지 저장 플로우 (DynamoDB → Redis Pub/Sub)
 - [ ] Redis Subscribe 리스너 구현
 - [ ] WebSocket 또는 SSE로 클라이언트 실시간 전송
+- [ ] Redis에 메시지 저장하지 않기 (Dual-Write 방지)

@@ -35,29 +35,43 @@ terraform output
 
 # Verify specific components
 terraform output cloudfront_domain_name
-terraform output api_gateway_websocket_url
 terraform output alb_dns_name
 terraform output redis_endpoint
 ```
 
 ---
 
-## Test 3: API Gateway → ALB → Fargate Connection
+## Test 3: ALB → Fargate Connection (HTTP/WebSocket)
 
-### Method 1: Using wscat (WebSocket CLI tool)
+**참고**: 현재 아키텍처는 API Gateway를 사용하지 않고, Internet Gateway를 통해 ALB로 직접 연결합니다.
+
+### Method 1: Using curl (HTTP 테스트)
+
+**Test HTTP connection to ALB**:
+```bash
+# Get ALB DNS Name
+ALB_URL=$(cd terraform && terraform output -raw alb_dns_name)
+
+# Test HTTP endpoint
+curl http://$ALB_URL/health
+
+# Expected: HTTP 200 OK
+```
+
+### Method 2: Using wscat (WebSocket 테스트용 - 채팅 앱 배포 후)
 
 **Install wscat**:
 ```bash
 npm install -g wscat
 ```
 
-**Test WebSocket connection**:
+**Test WebSocket connection via ALB**:
 ```bash
-# Get WebSocket URL
-WS_URL=$(cd terraform && terraform output -raw api_gateway_websocket_url)
+# Get ALB DNS Name
+ALB_URL=$(cd terraform && terraform output -raw alb_dns_name)
 
-# Connect to WebSocket API
-wscat -c $WS_URL
+# Connect to WebSocket via ALB (채팅 앱이 WebSocket을 지원하는 경우)
+wscat -c ws://$ALB_URL
 ```
 
 **Expected output**:
@@ -122,10 +136,11 @@ if __name__ == "__main__":
 # Install dependencies
 pip install websockets
 
-# Get WebSocket URL
-WS_URL=$(cd terraform && terraform output -raw api_gateway_websocket_url)
+# Get ALB DNS Name for WebSocket
+ALB_URL=$(cd terraform && terraform output -raw alb_dns_name)
+WS_URL="ws://$ALB_URL"
 
-# Run test
+# Run test (채팅 앱이 WebSocket을 지원하는 경우)
 python test_websocket.py "$WS_URL"
 ```
 
@@ -250,9 +265,9 @@ Create a test HTML file:
 **How to use**:
 1. Save as `test_websocket.html`
 2. Open in browser
-3. Get WebSocket URL: `terraform output api_gateway_websocket_url`
-4. Paste URL and click "Connect"
-5. Send test messages
+3. Get ALB URL: `ALB_URL=$(terraform output -raw alb_dns_name)` → WebSocket URL은 `ws://<ALB_DNS_NAME>`
+4. Paste WebSocket URL and click "Connect"
+5. Send test messages (채팅 앱이 WebSocket을 지원하는 경우)
 
 ---
 
@@ -311,31 +326,43 @@ aws elbv2 describe-target-health \
 
 ---
 
-## Test 6: VPC Link Status
+## Test 6: NAT Gateway Status
 
-Verify VPC Link is active:
+Verify NAT Gateways are available (2개, 각 AZ마다 1개):
 
 ```bash
-# Get VPC Link ID
-VPC_LINK_ID=$(cd terraform && terraform output -json | jq -r '.vpc_link_id.value // empty')
+# Check NAT Gateways
+aws ec2 describe-nat-gateways \
+  --filter "Name=state,Values=available" \
+  --region ap-northeast-2 \
+  --query 'NatGateways[?contains(Tags[?Key==`Project`].Value, `chatapp`)].{ID:NatGatewayId,Subnet:SubnetId,State:State,PublicIP:NatGatewayAddresses[0].PublicIp}'
 
-# If not in outputs, find it manually
-aws apigatewayv2 get-vpc-links \
-  --query 'Items[?contains(Name, `chatapp`)].{Name:Name,ID:VpcLinkId,Status:VpcLinkStatus}'
-
-# Check specific VPC Link status
-aws apigatewayv2 get-vpc-link \
-  --vpc-link-id <VPC_LINK_ID> \
-  --query '{Name:Name,Status:VpcLinkStatus,Message:VpcLinkStatusMessage}'
+# Expected: 2 NAT Gateways with state "available"
 ```
 
-**Expected status**: `AVAILABLE`
+**Expected output**:
+```json
+[
+    {
+        "ID": "nat-0abc123...",
+        "Subnet": "subnet-xxx (ap-northeast-2a)",
+        "State": "available",
+        "PublicIP": "13.125.x.x"
+    },
+    {
+        "ID": "nat-0def456...",
+        "Subnet": "subnet-yyy (ap-northeast-2c)",
+        "State": "available",
+        "PublicIP": "13.125.y.y"
+    }
+]
+```
 
 ---
 
-## Test 7: End-to-End CloudFront → API Gateway → Fargate
+## Test 7: End-to-End 정적 콘텐츠 및 동적 API 테스트
 
-### Using CloudFront Domain
+### CloudFront (정적 콘텐츠)
 
 ```bash
 # Get CloudFront domain
@@ -347,9 +374,21 @@ curl -I https://$CF_DOMAIN/
 # Expected: 200 OK or 403 (if no index.html uploaded yet)
 ```
 
-### Test WebSocket through CloudFront (if configured)
+### ALB (동적 API 및 WebSocket)
 
-Note: By default, CloudFront serves S3 static content. For WebSocket, you need to connect directly to API Gateway URL.
+**참고**:
+- 정적 콘텐츠(HTML/CSS/JS)는 CloudFront → S3
+- 동적 API 및 WebSocket은 Internet Gateway → ALB → Fargate
+
+```bash
+# Get ALB DNS
+ALB_URL=$(cd terraform && terraform output -raw alb_dns_name)
+
+# Test ALB health endpoint
+curl http://$ALB_URL/health
+
+# Expected: HTTP 200 OK
+```
 
 ---
 
@@ -494,9 +533,9 @@ echo "========================================="
 echo "Test Complete!"
 echo "========================================="
 echo ""
-echo "To test WebSocket connection:"
-echo "  WS_URL=\$(terraform output -raw api_gateway_websocket_url)"
-echo "  wscat -c \$WS_URL"
+echo "To test WebSocket connection (if chat app supports it):"
+echo "  ALB_URL=\$(terraform output -raw alb_dns_name)"
+echo "  wscat -c ws://\$ALB_URL"
 echo ""
 ```
 
