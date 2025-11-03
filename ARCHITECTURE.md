@@ -22,10 +22,17 @@
   - 액세스 로그 → S3 전송
 
 #### 3. 컴퓨트 계층
+- **Amazon ECS (Elastic Container Service)**: 컨테이너 오케스트레이션
+  - ECS 클러스터: Fargate 태스크 관리
+  - Container Insights 활성화
 - **ECS Fargate**: 서버리스 컨테이너 실행 환경
   - Blue 서비스 (90% 트래픽) - 안정적인 프로덕션 버전
   - Green 서비스 (10% 트래픽) - 테스트용 신규 버전
   - 카나리 배포: 10% → 50% → 100% 점진적 전환
+- **Amazon ECR (Elastic Container Registry)**: 프라이빗 Docker 레지스트리
+  - 이미지 스캔 활성화 (보안 취약점 검사)
+  - 라이프사이클 정책: 최근 10개 이미지만 보관
+  - 암호화: AES256
 - **Application Load Balancer**: 트래픽 분산 및 가중치 기반 라우팅
 
 #### 4. 데이터 계층
@@ -81,9 +88,15 @@
    ECS Fargate → ElastiCache Redis (리전 엔드포인트)
    ```
 
-4. **외부 통신** (ECR 이미지 Pull 등):
+4. **컨테이너 이미지 관리**:
    ```
-   ECS Fargate (Private) → NAT Gateway (Public) → IGW → 인터넷
+   CI/CD (GitHub/CodeCommit/Jenkins) → Amazon ECR
+   ECS Fargate → ECR (이미지 Pull via NAT Gateway)
+   ```
+
+5. **외부 통신** (ECR 이미지 Pull 등):
+   ```
+   ECS Fargate (Private) → NAT Gateway (Public) → IGW → ECR/인터넷
    ```
 
 ### Blue/Green 카나리 배포

@@ -20,7 +20,8 @@
 
 ### 사용된 AWS 서비스
 
-- **컴퓨트**: ECS Fargate
+- **컴퓨트**: ECS Fargate, ECS (Orchestration)
+- **컨테이너 레지스트리**: ECR (Elastic Container Registry)
 - **네트워크**: VPC, ALB (Public), IGW, NAT Gateway, CloudFront
 - **데이터베이스**: DynamoDB, ElastiCache Redis (멀티 AZ)
 - **스토리지**: S3 (정적 콘텐츠, ALB 로그)
@@ -119,10 +120,11 @@ export AWS_PROFILE=softbank
         ├── vpc/                   # VPC 모듈 (IGW, NAT, Subnets)
         ├── security-groups/       # Security Groups
         ├── iam/                   # IAM Roles
+        ├── ecr/                   # ECR Repository
         ├── dynamodb/              # DynamoDB 테이블
         ├── elasticache/           # Redis 클러스터 (멀티 AZ)
         ├── alb/                   # ALB (Public, 액세스 로그)
-        ├── ecs/                   # ECS Fargate
+        ├── ecs/                   # ECS Cluster & Fargate Services
         ├── monitoring/            # CloudWatch 알람, 로그
         └── cloudfront/            # CloudFront + S3
 ```
@@ -151,8 +153,9 @@ aws_region   = "ap-northeast-2"  # 서울 리전
 project_name = "chatapp"
 environment  = "dev"
 
-# 컨테이너 이미지 (실제 이미지로 변경 필요)
-container_image = "your-ecr-repo/chatapp:latest"
+# 컨테이너 이미지 (ECR URL은 terraform apply 후 자동 생성됨)
+# 처음에는 기본값(nginx:latest) 사용, 이후 ECR 이미지로 변경
+container_image = "nginx:latest"
 
 # S3 버킷 이름 (고유한 이름으로 변경, 비워두면 자동 생성)
 s3_bucket_name = ""
@@ -189,6 +192,7 @@ terraform output
 ```
 
 주요 출력값:
+- `ecr_repository_url`: ECR Repository URL (Docker 이미지 푸시용)
 - `alb_dns_name`: ALB DNS 이름 (사용자 직접 접속)
 - `cloudfront_domain_name`: 정적 웹사이트 도메인
 - `redis_endpoint`: Redis 엔드포인트
@@ -256,17 +260,24 @@ WebSocket 연결 정보를 저장하는 테이블입니다.
 실제 채팅 애플리케이션 이미지를 ECR에 푸시해야 합니다:
 
 ```bash
-# ECR 로그인
-aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin <account-id>.dkr.ecr.ap-northeast-2.amazonaws.com
+# ECR Repository URL 확인
+ECR_REPO=$(terraform output -raw ecr_repository_url)
+echo "ECR Repository: $ECR_REPO"
 
-# 이미지 빌드
-docker build -t chatapp .
+# ECR 로그인
+aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin $ECR_REPO
+
+# 이미지 빌드 (채팅 애플리케이션 소스 디렉토리에서)
+docker build -t chatapp:latest .
 
 # 태그 지정
-docker tag chatapp:latest <account-id>.dkr.ecr.ap-northeast-2.amazonaws.com/chatapp:latest
+docker tag chatapp:latest $ECR_REPO:latest
 
 # 푸시
-docker push <account-id>.dkr.ecr.ap-northeast-2.amazonaws.com/chatapp:latest
+docker push $ECR_REPO:latest
+
+# terraform.tfvars에서 container_image 업데이트
+# container_image = "<ECR_REPO_URL>:latest"
 ```
 
 ### 2. ECS 서비스 업데이트
