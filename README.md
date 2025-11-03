@@ -3,7 +3,7 @@
 
 ## 프로젝트 개요
 
-이 프로젝트는 Terraform을 사용하여 AWS에서 확장 가능하고 안전한 실시간 채팅 애플리케이션 인프라를 구축합니다. **해커톤 데모에 최적화**되어 있습니다.
+이 프로젝트는 Terraform을 사용하여 AWS에서 확장 가능하고 안전한 실시간 채팅 애플리케이션 인프라를 구축합니다
 
 ### 주요 기능
 
@@ -107,6 +107,7 @@ export AWS_PROFILE=softbank
 .
 ├── README.md                      # 본 파일
 ├── ARCHITECTURE.md                # 아키텍처 상세 설명
+├── DEVELOPER_GUIDE.md             # 개발자 가이드 (DynamoDB, Redis 사용법)
 ├── QUICKSTART.md                  # 빠른 시작 가이드
 ├── DEMO_GUIDE.md                  # 해커톤 발표 시연 가이드
 ├── TEST_GUIDE.md                  # 테스트 가이드
@@ -214,44 +215,32 @@ aws elbv2 describe-target-health \
 
 ## DynamoDB 테이블 구조
 
-### 1. Messages 테이블 (`chatapp-dev-messages`)
+### 테이블 개요
 
-채팅 메시지를 저장하는 테이블입니다.
+이 프로젝트는 3개의 DynamoDB 테이블을 사용합니다:
 
-| 속성명 | 타입 | 설명 |
-|--------|------|------|
-| roomId (PK) | String | 채팅방 ID |
-| timestamp (SK) | Number | 메시지 타임스탬프 (Unix time) |
-| userId | String | 사용자 ID |
-| message | String | 메시지 내용 |
-| ttl | Number | TTL (자동 삭제 시간) |
+1. **Messages** (`chatapp-dev-messages`): 채팅 메시지 저장
+2. **Connections** (`chatapp-dev-connections`): WebSocket 연결 정보
+3. **User Counter** (`chatapp-dev-user-counter`): 자동 증가 사용자 ID 관리
 
-**GSI**: `userId-timestamp-index`
-- Hash Key: userId
-- Range Key: timestamp
+### 상세 스키마 및 사용법
 
-### 2. Connections 테이블 (`chatapp-dev-connections`)
+자세한 테이블 구조, 쿼리 예제, Redis 캐시 사용법은 [DEVELOPER_GUIDE.md](./DEVELOPER_GUIDE.md)를 참조하세요.
 
-WebSocket 연결 정보를 저장하는 테이블입니다.
+#### 간단 요약
 
-| 속성명 | 타입 | 설명 |
-|--------|------|------|
-| connectionId (PK) | String | WebSocket 연결 ID |
-| userId | String | 사용자 ID (user1, user2, ...) |
-| connectedAt | Number | 연결 시간 |
-| ttl | Number | TTL (자동 삭제 시간) |
+**Messages 테이블**:
+- Partition Key: `roomId` (채팅방 ID)
+- Sort Key: `timestamp` (메시지 시간)
+- GSI: `userId-timestamp-index` (사용자별 메시지 조회)
 
-**GSI**: `userId-index`
-- Hash Key: userId
+**Connections 테이블**:
+- Partition Key: `connectionId` (WebSocket 연결 ID)
+- GSI: `userId-index` (사용자별 연결 조회)
 
-### 3. User Counter 테이블 (`chatapp-dev-user-counter`)
-
-자동 증가 사용자 ID를 관리하는 테이블입니다.
-
-| 속성명 | 타입 | 설명 |
-|--------|------|------|
-| counterId (PK) | String | 카운터 ID (예: "userCounter") |
-| currentValue | Number | 현재 카운터 값 |
+**User Counter 테이블**:
+- Partition Key: `counterId` (카운터 식별자)
+- Atomic counter로 사용자 ID 자동 생성
 
 ## 배포 후 작업
 
