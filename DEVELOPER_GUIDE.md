@@ -68,6 +68,9 @@ public class ChatMessage {
     private String message;
     private Long ttl;
 
+    // DynamoDB SDK용 기본 생성자 (필수)
+    public ChatMessage() {}
+
     public ChatMessage(String nickname, String message) {
         this.pk = "CHAT";  // 고정값
         this.messageId = UUID.randomUUID().toString();
@@ -79,11 +82,23 @@ public class ChatMessage {
 
     @DynamoDbPartitionKey
     public String getPk() { return pk; }
+    public void setPk(String pk) { this.pk = pk; }
 
     @DynamoDbSortKey
     public Long getTimestamp() { return timestamp; }
+    public void setTimestamp(Long timestamp) { this.timestamp = timestamp; }
 
-    // getters/setters...
+    public String getMessageId() { return messageId; }
+    public void setMessageId(String messageId) { this.messageId = messageId; }
+
+    public String getNickname() { return nickname; }
+    public void setNickname(String nickname) { this.nickname = nickname; }
+
+    public String getMessage() { return message; }
+    public void setMessage(String message) { this.message = message; }
+
+    public Long getTtl() { return ttl; }
+    public void setTtl(Long ttl) { this.ttl = ttl; }
 }
 ```
 
@@ -155,7 +170,42 @@ public class RedisPubSubService {
 
 ---
 
-### 5. API Controller
+### 5. Redis Subscriber (WebSocket으로 클라이언트 전송)
+
+```java
+@Component
+public class RedisMessageListener implements MessageListener {
+    private final SimpMessagingTemplate messagingTemplate;
+
+    @Override
+    public void onMessage(Message message, byte[] pattern) {
+        // Redis Pub/Sub에서 메시지 수신
+        ChatMessage msg = (ChatMessage) redisTemplate
+            .getValueSerializer()
+            .deserialize(message.getBody());
+
+        // WebSocket으로 모든 클라이언트에게 브로드캐스트
+        messagingTemplate.convertAndSend("/topic/messages", msg);
+    }
+}
+
+// Redis 리스너 설정
+@Configuration
+public class RedisConfig {
+    @Bean
+    RedisMessageListenerContainer container(RedisConnectionFactory factory,
+                                            MessageListener listener) {
+        RedisMessageListenerContainer container = new RedisMessageListenerContainer();
+        container.setConnectionFactory(factory);
+        container.addMessageListener(listener, new ChannelTopic("chat"));
+        return container;
+    }
+}
+```
+
+---
+
+### 6. API Controller
 
 ```java
 @RestController
@@ -199,28 +249,163 @@ public class ChatController {
 
 ---
 
+---
+
+## 환경 변수 설정
+
+애플리케이션에서 사용할 환경 변수:
+
+```yaml
+# application.yml
+spring:
+  data:
+    redis:
+      host: ${REDIS_HOST}  # ElastiCache Redis 엔드포인트
+      port: ${REDIS_PORT}  # 기본: 6379
+
+cloud:
+  aws:
+    region:
+      static: ${AWS_REGION}  # ap-northeast-2
+    dynamodb:
+      table-name: ${DYNAMODB_TABLE_NAME}  # chatapp-dev-messages
+```
+
+**Terraform에서 자동 설정되는 환경 변수** (ECS Task Definition):
+- `REDIS_HOST`: ElastiCache Redis 엔드포인트
+- `REDIS_PORT`: 6379
+- `DYNAMODB_TABLE_NAME`: DynamoDB 테이블 이름
+- `AWS_REGION`: ap-northeast-2
+
+**로컬 개발 시**:
+```bash
+export REDIS_HOST=localhost
+export REDIS_PORT=6379
+export AWS_REGION=ap-northeast-2
+export DYNAMODB_TABLE_NAME=chatapp-dev-messages
+```
+
+---
+
 ## API 사용법 예시
 
 ```bash
+# ALB DNS 확인 (Terraform output)
+ALB_URL=$(cd terraform && terraform output -raw alb_dns_name)
+
 # 1. 입장 (닉네임 받기)
-curl -X POST http://localhost:8080/api/join
+curl -X POST http://$ALB_URL/api/join
 # → {"nickname": "Guest-1234"}
 
 # 2. 메시지 전송
-curl -X POST http://localhost:8080/api/send \
+curl -X POST http://$ALB_URL/api/send \
   -H "Content-Type: application/json" \
   -d '{"nickname":"Guest-1234","message":"안녕하세요!"}'
 
 # 3. 메시지 조회 (최근 100개)
-curl http://localhost:8080/api/messages
+curl http://$ALB_URL/api/messages
+
+# 4. Health Check
+curl http://$ALB_URL/health
 ```
+
+---
+
+## 의존성 (build.gradle 또는 pom.xml)
+
+### Gradle
+```gradle
+dependencies {
+    // Spring Boot
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-websocket'
+
+    // DynamoDB
+    implementation 'software.amazon.awssdk:dynamodb-enhanced:2.20.0'
+
+    // Redis
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+
+    // WebSocket (STOMP)
+    implementation 'org.springframework:spring-messaging'
+    implementation 'org.springframework:spring-websocket'
+}
+```
+
+### Maven
+```xml
+<dependencies>
+    <!-- Spring Boot -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-websocket</artifactId>
+    </dependency>
+
+    <!-- DynamoDB -->
+    <dependency>
+        <groupId>software.amazon.awssdk</groupId>
+        <artifactId>dynamodb-enhanced</artifactId>
+        <version>2.20.0</version>
+    </dependency>
+
+    <!-- Redis -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-data-redis</artifactId>
+    </dependency>
+</dependencies>
+```
+
+---
 
 ## 구현 체크리스트
 
-- [ ] DynamoDB 테이블 생성 (pk="CHAT", TTL 1시간)
-- [ ] Redis 연결 설정 (Pub/Sub + Rate Limiting만)
-- [ ] 닉네임 랜덤 생성 (Guest-XXXX)
-- [ ] 메시지 저장 플로우 (DynamoDB → Redis Pub/Sub)
-- [ ] Redis Subscribe 리스너 구현
-- [ ] WebSocket 또는 SSE로 클라이언트 실시간 전송
+### 인프라 (Terraform으로 자동 생성)
+- [x] DynamoDB 테이블 생성 (pk="CHAT", TTL 1시간)
+- [x] ElastiCache Redis 클러스터 (Multi-AZ)
+- [x] ECS Fargate 환경 변수 설정
+- [x] ALB 및 Target Groups
+
+### 백엔드 구현
+- [ ] Spring Boot 프로젝트 생성
+- [ ] DynamoDB 연결 및 엔티티 작성
+- [ ] Redis 연결 설정 (Pub/Sub + Rate Limiting)
+- [ ] 닉네임 랜덤 생성 서비스 (Guest-XXXX)
+- [ ] 메시지 저장 플로우 구현 (DynamoDB → Redis Pub/Sub)
+- [ ] Redis Subscriber 리스너 구현
+- [ ] WebSocket 설정 (STOMP 또는 Raw WebSocket)
+- [ ] REST API 엔드포인트 (/join, /send, /messages)
+- [ ] Health Check 엔드포인트 (/health)
+
+### 중요 원칙
 - [ ] Redis에 메시지 저장하지 않기 (Dual-Write 방지)
+- [ ] DynamoDB를 Single Source of Truth로 사용
+- [ ] Rate Limiting 구현 (1분에 10개 제한)
+- [ ] TTL 1시간 설정 확인
+
+### 프론트엔드 (선택사항)
+- [ ] WebSocket 클라이언트 연결
+- [ ] 메시지 송수신 UI
+- [ ] CloudFront를 통한 정적 파일 배포
+
+---
+
+## 추가 참고 사항
+
+### DynamoDB Query 성능
+- **pk="CHAT"** 단일 파티션 사용으로 **핫 파티션 위험**이 있으나, 해커톤 규모(100명, 5분)에서는 문제없음
+- 프로덕션에서는 여러 채팅방이 있다면 `pk=ROOM:{room_id}` 형태로 분산 권장
+
+### Redis Pub/Sub 주의사항
+- **메시지 손실 가능**: Subscriber가 없으면 메시지가 사라짐 (괜찮음, DynamoDB가 영구 저장)
+- **저장 안함**: Redis는 메모리 절약을 위해 메시지를 저장하지 않음
+
+### WebSocket vs SSE
+- **WebSocket**: 양방향 통신 (채팅에 적합)
+- **SSE (Server-Sent Events)**: 단방향 (서버 → 클라이언트만)
+
+현재 아키텍처는 **WebSocket** 권장 (ALB가 WebSocket 업그레이드 지원)
