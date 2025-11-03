@@ -20,6 +20,17 @@ module "security_groups" {
   vpc_cidr     = var.vpc_cidr
 }
 
+# ECR 모듈
+module "ecr" {
+  source = "./modules/ecr"
+
+  project_name           = var.project_name
+  environment            = var.environment
+  image_tag_mutability   = var.ecr_image_tag_mutability
+  scan_on_push           = var.ecr_scan_on_push
+  image_retention_count  = var.ecr_image_retention_count
+}
+
 # IAM 모듈
 module "iam" {
   source = "./modules/iam"
@@ -27,7 +38,7 @@ module "iam" {
   project_name         = var.project_name
   environment          = var.environment
   dynamodb_table_arn   = module.dynamodb.all_table_arns
-  ecr_repository_arns  = [] # ECR 사용 시 추가
+  ecr_repository_arns  = [module.ecr.repository_arn]
 }
 
 # DynamoDB 모듈

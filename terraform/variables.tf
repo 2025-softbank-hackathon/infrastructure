@@ -72,6 +72,25 @@ variable "desired_count" {
   default     = 1
 }
 
+# ECR 설정
+variable "ecr_image_tag_mutability" {
+  description = "ECR 이미지 태그 변경 가능 여부 (MUTABLE 또는 IMMUTABLE)"
+  type        = string
+  default     = "MUTABLE"
+}
+
+variable "ecr_scan_on_push" {
+  description = "이미지 푸시 시 자동 보안 스캔 활성화"
+  type        = bool
+  default     = true
+}
+
+variable "ecr_image_retention_count" {
+  description = "ECR에 보관할 이미지 개수"
+  type        = number
+  default     = 10
+}
+
 # Blue/Green 배포 설정
 variable "blue_weight" {
   description = "Blue 타겟 그룹 트래픽 가중치 (0-100)"

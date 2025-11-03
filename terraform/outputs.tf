@@ -1,3 +1,14 @@
+# ECR 출력
+output "ecr_repository_url" {
+  description = "ECR repository URL"
+  value       = module.ecr.repository_url
+}
+
+output "ecr_repository_name" {
+  description = "ECR repository name"
+  value       = module.ecr.repository_name
+}
+
 output "vpc_id" {
   description = "VPC ID"
   value       = module.vpc.vpc_id
@@ -61,11 +72,6 @@ output "redis_endpoint" {
 output "redis_port" {
   description = "Redis port"
   value       = module.elasticache.redis_port
-}
-
-output "api_gateway_websocket_url" {
-  description = "API Gateway WebSocket URL"
-  value       = module.api_gateway.websocket_url
 }
 
 output "cloudfront_domain_name" {

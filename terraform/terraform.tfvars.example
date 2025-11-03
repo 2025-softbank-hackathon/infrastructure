@@ -11,8 +11,13 @@ availability_zones   = ["ap-northeast-2a", "ap-northeast-2c"]  # 멀티 AZ
 public_subnet_cidrs  = ["10.0.1.0/24", "10.0.2.0/24"]          # ALB용 2개 필요
 private_subnet_cidrs = ["10.0.11.0/24", "10.0.12.0/24"]        # ECS Fargate용
 
+# ECR 설정
+ecr_image_tag_mutability  = "MUTABLE"    # 태그 변경 가능
+ecr_scan_on_push          = true         # 이미지 푸시 시 보안 스캔
+ecr_image_retention_count = 10           # 최근 10개 이미지만 보관
+
 # ECS 설정 (해커톤용 최소 리소스)
-container_image  = "nginx:latest"  # TODO: ECR에 올린 채팅 앱 이미지로 변경 필요
+container_image  = "nginx:latest"  # 처음 배포 시 기본 이미지, 이후 ECR URL로 변경
 container_port   = 3000
 fargate_cpu      = 256  # 0.25 vCPU
 fargate_memory   = 512  # 0.5 GB
