@@ -134,16 +134,6 @@ resource "random_id" "bucket_suffix" {
   byte_length = 4
 }
 
-# DynamoDB용 VPC Endpoint
-resource "aws_vpc_endpoint" "dynamodb" {
-  vpc_id            = module.vpc.vpc_id
-  service_name      = "com.amazonaws.${var.aws_region}.dynamodb"
-  vpc_endpoint_type = "Gateway"
-  route_table_ids   = module.vpc.private_route_table_ids
-
-  tags = {
-    Name        = "${var.project_name}-${var.environment}-dynamodb-endpoint"
-    Project     = var.project_name
-    Environment = var.environment
-  }
-}
+# DynamoDB 접근: VPC Endpoint 제거
+# Fargate Task는 NAT Gateway를 통해 DynamoDB의 Public Endpoint로 접근
+# 이는 구성을 단순화하고, NAT Gateway가 이미 ECR 접근을 위해 필요하므로 추가 비용 없음

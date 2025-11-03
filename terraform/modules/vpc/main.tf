@@ -55,12 +55,13 @@ resource "aws_subnet" "private" {
   }
 }
 
-# NAT Gateway용 Elastic IP (비용 절감을 위한 단일 NAT)
+# NAT Gateway용 Elastic IP (각 AZ마다 1개씩)
 resource "aws_eip" "nat" {
+  count  = length(var.availability_zones)
   domain = "vpc"
 
   tags = {
-    Name        = "${var.project_name}-${var.environment}-nat-eip"
+    Name        = "${var.project_name}-${var.environment}-nat-eip-${count.index + 1}"
     Project     = var.project_name
     Environment = var.environment
   }
@@ -68,13 +69,14 @@ resource "aws_eip" "nat" {
   depends_on = [aws_internet_gateway.main]
 }
 
-# NAT Gateway (비용 절감을 위해 첫 번째 AZ에만 단일 NAT 사용)
+# NAT Gateway (각 AZ의 Public Subnet에 1개씩)
 resource "aws_nat_gateway" "main" {
-  allocation_id = aws_eip.nat.id
-  subnet_id     = aws_subnet.public[0].id
+  count         = length(var.availability_zones)
+  allocation_id = aws_eip.nat[count.index].id
+  subnet_id     = aws_subnet.public[count.index].id
 
   tags = {
-    Name        = "${var.project_name}-${var.environment}-nat-gw"
+    Name        = "${var.project_name}-${var.environment}-nat-gw-${count.index + 1}"
     Project     = var.project_name
     Environment = var.environment
   }
@@ -106,26 +108,27 @@ resource "aws_route_table_association" "public" {
   route_table_id = aws_route_table.public.id
 }
 
-# 프라이빗 라우트 테이블 (단일 NAT Gateway를 사용하는 단일 라우트 테이블)
+# 프라이빗 라우트 테이블 (각 AZ마다 별도의 NAT Gateway 사용)
 resource "aws_route_table" "private" {
+  count  = length(var.availability_zones)
   vpc_id = aws_vpc.main.id
 
   route {
     cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.main.id
+    nat_gateway_id = aws_nat_gateway.main[count.index].id
   }
 
   tags = {
-    Name        = "${var.project_name}-${var.environment}-private-rt"
+    Name        = "${var.project_name}-${var.environment}-private-rt-${count.index + 1}"
     Project     = var.project_name
     Environment = var.environment
   }
 }
 
-# 프라이빗 라우트 테이블 연결 (모든 프라이빗 서브넷이 동일한 라우트 테이블 사용)
+# 프라이빗 라우트 테이블 연결 (각 프라이빗 서브넷이 해당 AZ의 NAT 사용)
 resource "aws_route_table_association" "private" {
   count = length(aws_subnet.private)
 
   subnet_id      = aws_subnet.private[count.index].id
-  route_table_id = aws_route_table.private.id
+  route_table_id = aws_route_table.private[count.index].id
 }

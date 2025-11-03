@@ -83,3 +83,13 @@ output "s3_bucket_name" {
   description = "S3 bucket name for static website"
   value       = module.cloudfront.s3_bucket_name
 }
+
+output "nat_gateway_ids" {
+  description = "NAT Gateway IDs (2개, 각 AZ마다 1개)"
+  value       = module.vpc.nat_gateway_ids
+}
+
+output "internet_gateway_id" {
+  description = "Internet Gateway ID"
+  value       = module.vpc.internet_gateway_id
+}

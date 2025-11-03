@@ -3,9 +3,9 @@ aws_region   = "ap-northeast-2"
 project_name = "chatapp"
 environment  = "dev"
 
-# VPC 설정 (해커톤용 - 멀티 AZ이지만 NAT는 1개로 비용 최적화)
-# 주의: ALB는 AWS 요구사항으로 최소 2개 AZ의 서브넷 필요
-# NAT Gateway는 1개만 배치하고 두 AZ Private Subnet이 공유 사용
+# VPC 설정 (멀티 AZ 고가용성 구성)
+# ALB는 AWS 요구사항으로 최소 2개 AZ의 서브넷 필요
+# NAT Gateway는 각 AZ마다 1개씩 배치 (총 2개 - 고가용성 확보)
 vpc_cidr             = "10.0.0.0/16"
 availability_zones   = ["ap-northeast-2a", "ap-northeast-2c"]  # 멀티 AZ
 public_subnet_cidrs  = ["10.0.1.0/24", "10.0.2.0/24"]          # ALB용 2개 필요
@@ -17,8 +17,10 @@ ecr_scan_on_push          = true         # 이미지 푸시 시 보안 스캔
 ecr_image_retention_count = 10           # 최근 10개 이미지만 보관
 
 # ECS 설정 (해커톤용 최소 리소스)
-container_image  = "nginx:latest"  # 처음 배포 시 기본 이미지, 이후 ECR URL로 변경
-container_port   = 3000
+# 주의: 실제 채팅 앱을 배포하려면 container_image를 ECR URL로 변경하세요
+# 예: container_image = "<AWS_ACCOUNT_ID>.dkr.ecr.ap-northeast-2.amazonaws.com/chatapp-dev:latest"
+container_image  = "nginx:latest"  # 인프라 테스트용 임시 이미지
+container_port   = 3000            # 채팅 앱 포트 (nginx 테스트 시 80으로 변경 가능)
 fargate_cpu      = 256  # 0.25 vCPU
 fargate_memory   = 512  # 0.5 GB
 desired_count    = 1    # 비용 절감 (Blue=1, Green=1로 총 2개 태스크)
