@@ -1,28 +1,18 @@
-# Softbank Infrastructure
+# Softbank 해커톤 실시간 채팅 서비스 AWS Infrastructure
+![Architecture](CloudArchitecture.png)
 
-AWS-based Real-time Chat Application Infrastructure with Blue/Green Deployment
+## 프로젝트 개요
 
-## Project Overview
+이 프로젝트는 Terraform을 사용하여 AWS에서 확장 가능하고 안전한 실시간 채팅 애플리케이션 인프라를 구축합니다. **해커톤 데모에 최적화**되어 있습니다.
 
-This project uses Terraform to build a scalable and secure real-time chat application infrastructure on AWS, optimized for **hackathon demonstrations**.
+### 주요 기능
 
-### Key Features
-
-- **WebSocket** real-time communication
-- **Blue/Green Deployment** strategy for zero-downtime updates
-- Live demonstration of traffic shifting (90/10 → 50/50 → 10/90)
-- Cost-optimized for hackathon/development (~$50-70/month)
-- Fully managed AWS services
-
-### Hackathon Demo Highlights
-
-This infrastructure is designed to demonstrate **zero-downtime deployment** in a 4-minute live presentation:
-1. Users connected to Blue environment (90% traffic)
-2. Live traffic shift to 50/50 split
-3. Complete shift to Green environment (90% traffic)
-4. **No user disconnections** throughout the entire process
-
-See [DEMO_GUIDE.md](./DEMO_GUIDE.md) for the complete presentation script.
+- **WebSocket** 실시간 양방향 통신
+- **Blue/Green 배포** 전략으로 무중단 업데이트
+- 라이브 데모: 트래픽 전환 시연 (90/10 → 50/50 → 10/90)
+- **비용 최적화**: 해커톤/개발 환경용 (~$70-90/월)
+- 완전 관리형 AWS 서비스
+- **멀티 AZ**: Redis 고가용성, ALB 2개 AZ 분산
 
 ## 아키텍처
 
@@ -30,14 +20,21 @@ See [DEMO_GUIDE.md](./DEMO_GUIDE.md) for the complete presentation script.
 
 ### 사용된 AWS 서비스
 
-- **Compute**: ECS Fargate
-- **Network**: VPC, ALB, API Gateway, CloudFront
-- **Database**: DynamoDB, ElastiCache Redis
-- **Storage**: S3
-- **Security**: IAM, Security Groups, VPC Endpoints
-- **Monitoring**: CloudWatch (향후 X-Ray 추가)
+- **컴퓨트**: ECS Fargate
+- **네트워크**: VPC, ALB (Public), IGW, NAT Gateway, CloudFront
+- **데이터베이스**: DynamoDB, ElastiCache Redis (멀티 AZ)
+- **스토리지**: S3 (정적 콘텐츠, ALB 로그)
+- **보안**: IAM, Security Groups, VPC Endpoints, VPC
+- **모니터링**: CloudWatch (알람, 메트릭, 로그), X-ray
 
-## Prerequisites
+### 주요 변경사항
+- **리전**: ap-northeast-2 (서울)
+- **트래픽 진입**: API Gateway 제거, Public ALB 직접 사용
+- **Redis**: 멀티 AZ (프라이머리 + 리드 리플리카)
+- **NAT Gateway**: 1개만 사용 (비용 절감)
+- **모니터링**: CloudWatch 알람, ALB 액세스 로그
+
+## Prerequisites (사전 요구사항)
 
 ### 필수 도구
 
@@ -76,7 +73,7 @@ aws configure
 입력 항목:
 - **AWS Access Key ID**: IAM 사용자의 Access Key
 - **AWS Secret Access Key**: IAM 사용자의 Secret Key
-- **Default region name**: `ap-northeast-1` (도쿄 리전)
+- **Default region name**: `ap-northeast-2` (서울 리전)
 - **Default output format**: `json`
 
 자격 증명은 `~/.aws/credentials`에 저장됩니다:
@@ -107,8 +104,11 @@ export AWS_PROFILE=softbank
 
 ```
 .
-├── README.md
-├── ARCHITECTURE.md
+├── README.md                      # 본 파일
+├── ARCHITECTURE.md                # 아키텍처 상세 설명
+├── QUICKSTART.md                  # 빠른 시작 가이드
+├── DEMO_GUIDE.md                  # 해커톤 발표 시연 가이드
+├── TEST_GUIDE.md                  # 테스트 가이드
 └── terraform/
     ├── main.tf                    # 메인 설정
     ├── variables.tf               # 변수 정의
@@ -116,14 +116,14 @@ export AWS_PROFILE=softbank
     ├── versions.tf                # Provider 버전
     ├── terraform.tfvars.example   # 변수값 예제
     └── modules/
-        ├── vpc/                   # VPC 모듈
+        ├── vpc/                   # VPC 모듈 (IGW, NAT, Subnets)
         ├── security-groups/       # Security Groups
         ├── iam/                   # IAM Roles
         ├── dynamodb/              # DynamoDB 테이블
-        ├── elasticache/           # Redis 클러스터
-        ├── alb/                   # Application Load Balancer
+        ├── elasticache/           # Redis 클러스터 (멀티 AZ)
+        ├── alb/                   # ALB (Public, 액세스 로그)
         ├── ecs/                   # ECS Fargate
-        ├── api-gateway/           # API Gateway WebSocket
+        ├── monitoring/            # CloudWatch 알람, 로그
         └── cloudfront/            # CloudFront + S3
 ```
 
@@ -146,15 +146,16 @@ cp terraform.tfvars.example terraform.tfvars
 `terraform.tfvars` 파일을 편집하여 필요한 값을 설정:
 
 ```hcl
-aws_region   = "ap-northeast-1"
+# AWS 기본 설정
+aws_region   = "ap-northeast-2"  # 서울 리전
 project_name = "chatapp"
 environment  = "dev"
 
 # 컨테이너 이미지 (실제 이미지로 변경 필요)
 container_image = "your-ecr-repo/chatapp:latest"
 
-# S3 버킷 이름 (고유한 이름으로 변경)
-s3_bucket_name = "chatapp-dev-static-20240101"
+# S3 버킷 이름 (고유한 이름으로 변경, 비워두면 자동 생성)
+s3_bucket_name = ""
 ```
 
 ### 3. Terraform 초기화
@@ -177,6 +178,8 @@ terraform apply
 
 배포 확인 메시지가 나타나면 `yes`를 입력합니다.
 
+**배포 소요 시간**: ~10-15분
+
 ### 6. 출력값 확인
 
 배포가 완료되면 다음과 같은 출력값을 확인할 수 있습니다:
@@ -186,28 +189,18 @@ terraform output
 ```
 
 주요 출력값:
-- `api_gateway_websocket_url`: WebSocket API 엔드포인트
+- `alb_dns_name`: ALB DNS 이름 (사용자 직접 접속)
 - `cloudfront_domain_name`: 정적 웹사이트 도메인
-- `alb_dns_name`: ALB DNS 이름
 - `redis_endpoint`: Redis 엔드포인트
 
 ### 7. 연결 테스트
-
-**WebSocket 연결 테스트** (wscat 사용):
-```bash
-# wscat 설치
-npm install -g wscat
-
-# WebSocket 연결 테스트
-WS_URL=$(terraform output -raw api_gateway_websocket_url)
-wscat -c $WS_URL
-```
 
 **ALB 헬스 체크**:
 ```bash
 # Blue 타겟 그룹 상태 확인
 aws elbv2 describe-target-health \
   --target-group-arn $(terraform output -raw blue_target_group_arn) \
+  --region ap-northeast-2 \
   --query 'TargetHealthDescriptions[*].TargetHealth.State'
 
 # 예상 출력: ["healthy"]
@@ -264,16 +257,16 @@ WebSocket 연결 정보를 저장하는 테이블입니다.
 
 ```bash
 # ECR 로그인
-aws ecr get-login-password --region ap-northeast-1 | docker login --username AWS --password-stdin <account-id>.dkr.ecr.ap-northeast-1.amazonaws.com
+aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin <account-id>.dkr.ecr.ap-northeast-2.amazonaws.com
 
 # 이미지 빌드
 docker build -t chatapp .
 
 # 태그 지정
-docker tag chatapp:latest <account-id>.dkr.ecr.ap-northeast-1.amazonaws.com/chatapp:latest
+docker tag chatapp:latest <account-id>.dkr.ecr.ap-northeast-2.amazonaws.com/chatapp:latest
 
 # 푸시
-docker push <account-id>.dkr.ecr.ap-northeast-1.amazonaws.com/chatapp:latest
+docker push <account-id>.dkr.ecr.ap-northeast-2.amazonaws.com/chatapp:latest
 ```
 
 ### 2. ECS 서비스 업데이트
@@ -284,6 +277,7 @@ docker push <account-id>.dkr.ecr.ap-northeast-1.amazonaws.com/chatapp:latest
 aws ecs update-service \
   --cluster chatapp-dev-cluster \
   --service chatapp-dev-service-blue \
+  --region ap-northeast-2 \
   --force-new-deployment
 ```
 
@@ -292,7 +286,7 @@ aws ecs update-service \
 S3에 정적 파일 업로드:
 
 ```bash
-aws s3 sync ./frontend/build s3://<bucket-name>/
+aws s3 sync ./frontend/build s3://<bucket-name>/ --region ap-northeast-2
 ```
 
 CloudFront 캐시 무효화:
@@ -303,78 +297,79 @@ aws cloudfront create-invalidation \
   --paths "/*"
 ```
 
-## Hackathon Live Demo (4-Minute Presentation)
+## 해커톤 라이브 데모 (4분 프레젠테이션)
 
-### Pre-Demo Setup (Before Presentation)
+### 데모 전 준비 (프레젠테이션 시작 전)
 
-1. **Deploy infrastructure** (~10 minutes):
+1. **인프라 배포** (~10분):
    ```bash
    cd terraform
    terraform apply
    ```
 
-2. **Verify both environments are healthy**:
+2. **Blue/Green 환경 모두 정상 확인**:
    ```bash
-   # Check Blue service
+   # Blue 서비스 확인
    aws ecs describe-services \
      --cluster chatapp-dev-cluster \
      --services chatapp-dev-service-blue \
+     --region ap-northeast-2 \
      --query 'services[0].runningCount'
 
-   # Check Green service
+   # Green 서비스 확인
    aws ecs describe-services \
      --cluster chatapp-dev-cluster \
      --services chatapp-dev-service-green \
+     --region ap-northeast-2 \
      --query 'services[0].runningCount'
    ```
-   Both should return `1`.
+   둘 다 `1`을 반환해야 합니다.
 
-3. **Share CloudFront URL** with audience (5 minutes before demo)
+3. **청중에게 URL 공유** (데모 5분 전)
    ```bash
+   terraform output alb_dns_name
+   # 또는
    terraform output cloudfront_domain_name
    ```
 
-### Live Demo Script
+### 라이브 데모 스크립트
 
-**Minute 0-1**: Show current state
+**0-1분**: 현재 상태 보여주기
 ```bash
-terraform output blue_weight  # Shows: 90
-terraform output green_weight  # Shows: 10
+terraform output blue_weight  # 출력: 90
+terraform output green_weight  # 출력: 10
 ```
 
-**Minute 1-2**: Shift to 50/50
+**1-2분**: 50/50으로 전환
 ```bash
-# Edit terraform.tfvars
+# terraform.tfvars 편집
 blue_weight  = 50
 green_weight = 50
 
 terraform apply -auto-approve
 ```
 
-**Minute 2-3**: Shift to Green-dominant
+**2-3분**: Green-우세로 전환
 ```bash
-# Edit terraform.tfvars
+# terraform.tfvars 편집
 blue_weight  = 10
 green_weight = 90
 
 terraform apply -auto-approve
 ```
 
-**Minute 3-4**: Verify no disconnections
-- Ask audience: "Did anyone get disconnected?"
-- Show CloudWatch metrics
+**3-4분**: 연결 끊김 없음 확인
+- 청중에게 질문: "연결이 끊긴 분 계신가요?"
+- CloudWatch 메트릭 보여주기
 
-**Complete demo script**: See [DEMO_GUIDE.md](./DEMO_GUIDE.md)
+**전체 데모 스크립트**: [DEMO_GUIDE.md](./DEMO_GUIDE.md) 참조
 
-### Emergency Rollback
+### 긴급 롤백
 
-If issues occur during demo:
+데모 중 문제 발생 시:
 ```bash
-# Immediate rollback to Blue 100%
-blue_weight  = 100
-green_weight = 0
-
-terraform apply -auto-approve
+# Blue 100%로 즉시 롤백
+terraform apply -var="blue_weight=100" -var="green_weight=0" -auto-approve
 ```
 
 ## 모니터링
@@ -383,12 +378,7 @@ terraform apply -auto-approve
 
 ECS 로그 확인:
 ```bash
-aws logs tail /ecs/chatapp-dev --follow
-```
-
-API Gateway 로그 확인:
-```bash
-aws logs tail /aws/apigateway/chatapp-dev --follow
+aws logs tail /ecs/chatapp-dev --follow --region ap-northeast-2
 ```
 
 ### CloudWatch Metrics
@@ -396,74 +386,83 @@ aws logs tail /aws/apigateway/chatapp-dev --follow
 AWS 콘솔에서 다음 메트릭 확인:
 - ECS Service CPU/Memory 사용률
 - ALB Request Count, Target Response Time
+- ALB 4xx/5xx 에러율
 - DynamoDB Read/Write Capacity
 - ElastiCache CPU, Network I/O
 
-## Cost Estimation
+### CloudWatch Alarms
 
-**Hackathon-Optimized Configuration** (Tokyo Region):
+다음 알람이 자동으로 생성됩니다:
+- ALB Unhealthy Hosts
+- ALB 4xx Errors
+- ALB 5xx Errors
+- ALB Target Response Time (P95)
 
-### Resource Breakdown
-- **ECS Fargate**: ~$15-20/month
+## 비용 예상
+
+**해커톤 최적화 구성** (서울 리전):
+
+### 리소스 별 비용 분석
+- **ECS Fargate**: ~$15-20/월
   - Blue: 1 task (0.25 vCPU, 0.5 GB)
   - Green: 1 task (0.25 vCPU, 0.5 GB)
-- **ALB**: ~$20-25/month (single ALB)
-- **NAT Gateway**: ~$32/month (single NAT, cost-optimized)
-- **ElastiCache (t3.micro)**: ~$12/month (single node, no backups)
-- **DynamoDB (On-Demand)**: ~$5/month (low traffic)
-- **API Gateway**: ~$3/month (WebSocket, low volume)
-- **CloudFront**: ~$1/month (minimal traffic)
-- **VPC, Security Groups**: Free
+- **ALB**: ~$20-25/월 (단일 ALB)
+- **NAT Gateway**: ~$32/월 (1개만 사용, 비용 최적화)
+- **ElastiCache (t4g.micro)**: ~$15/월 (멀티 AZ: 프라이머리 + 리플리카)
+- **DynamoDB (On-Demand)**: ~$5/월 (낮은 트래픽)
+- **CloudFront**: ~$1/월 (최소 트래픽)
+- **S3**: ~$1/월 (정적 콘텐츠 + ALB 로그)
+- **VPC, Security Groups**: 무료
 
-**Total Estimated Cost**: ~$50-70/month
+**총 예상 비용**: ~$70-90/월
 
-### Cost Savings vs. Production Setup
-| Item | Production | Hackathon | Savings |
+### 프로덕션 대비 비용 절감
+| 항목 | 프로덕션 | 해커톤 | 절감액 |
 |------|-----------|-----------|---------|
-| NAT Gateway | 2 AZs | 1 AZ | ~$32/mo |
-| ECS Tasks | 4+ tasks | 2 tasks | ~$30/mo |
-| ElastiCache | Multi-node | Single node | ~$15/mo |
-| Backups | Enabled | Disabled | ~$10/mo |
-| **Total Savings** | | | **~$87/mo** |
+| NAT Gateway | 2 AZs | 1 AZ | ~$32/월 |
+| ECS Tasks | 4+ tasks | 2 tasks | ~$30/월 |
+| ElastiCache | 단일 노드 | 멀티 AZ | $0 (가용성 우선) |
+| 백업 | 활성화 | 비활성화 | ~$10/월 |
+| **총 절감액** | | | **~$72/월** |
 
-### Tips to Reduce Costs Further
-1. **Stop during non-demo hours**: Scale ECS tasks to 0
-2. **Use Fargate Spot**: ~70% cheaper (but may interrupt)
-3. **Delete after hackathon**: Don't forget to `terraform destroy`!
+### 추가 비용 절감 팁
+1. **데모 외 시간에 중지**: ECS 태스크를 0으로 스케일링
+2. **Fargate Spot 사용**: ~70% 저렴 (단, 중단 가능)
+3. **해커톤 후 삭제**: `terraform destroy` 실행!
 
-## Resource Cleanup
+## 리소스 정리
 
-**IMPORTANT**: After the hackathon, destroy all resources to avoid ongoing charges!
+**중요**: 해커톤 종료 후 지속적인 과금을 피하기 위해 모든 리소스를 삭제하세요!
 
-### Quick Cleanup
+### 빠른 정리
 
 ```bash
-# 1. Empty S3 bucket first
-aws s3 rm s3://$(terraform output -raw s3_bucket_name) --recursive
+# 1. S3 버킷 비우기 (필수)
+aws s3 rm s3://$(terraform output -raw s3_bucket_name) --recursive --region ap-northeast-2
 
-# 2. Destroy all infrastructure
+# 2. 모든 인프라 삭제
 cd terraform
 terraform destroy -auto-approve
 ```
 
-### Verify Deletion
+### 삭제 확인
 
 ```bash
-# Check ECS clusters
-aws ecs list-clusters
+# ECS 클러스터 확인
+aws ecs list-clusters --region ap-northeast-2
 
-# Check ALBs
-aws elbv2 describe-load-balancers
+# ALB 확인
+aws elbv2 describe-load-balancers --region ap-northeast-2
 
-# Check NAT Gateways
-aws ec2 describe-nat-gateways --filter "Name=state,Values=available"
+# NAT Gateway 확인
+aws ec2 describe-nat-gateways --filter "Name=state,Values=available" --region ap-northeast-2
 ```
 
-**Estimated time**: ~10 minutes
+**예상 소요 시간**: ~10분
 
-### Cost Alert
+### 비용 알림
 
-If you forget to delete, monthly charges will continue (~$50-70/month). Set up a CloudWatch billing alarm!
+삭제를 잊으면 월 ~$70-90의 요금이 계속 청구됩니다. CloudWatch 요금 알람 설정을 권장합니다!
 
 ## 문제 해결
 
@@ -485,12 +484,13 @@ aws sts get-caller-identity
 
 CloudWatch Logs에서 오류 확인:
 ```bash
-aws logs tail /ecs/chatapp-dev --follow
+aws logs tail /ecs/chatapp-dev --follow --region ap-northeast-2
 ```
 
 ## 참고 자료
 
 - [Terraform AWS Provider](https://registry.terraform.io/providers/hashicorp/aws/latest/docs)
 - [AWS ECS Best Practices](https://docs.aws.amazon.com/AmazonECS/latest/bestpracticesguide/intro.html)
-- [API Gateway WebSocket](https://docs.aws.amazon.com/apigateway/latest/developerguide/apigateway-websocket-api.html)
+- [ALB WebSocket Support](https://docs.aws.amazon.com/elasticloadbalancing/latest/application/load-balancer-target-groups.html)
 - [DynamoDB Best Practices](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/best-practices.html)
+- [ElastiCache Redis Multi-AZ](https://docs.aws.amazon.com/AmazonElastiCache/latest/red-ug/AutoFailover.html)

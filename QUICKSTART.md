@@ -1,220 +1,262 @@
-# Quick Start Guide - Hackathon Demo
+# 빠른 시작 가이드 - 해커톤 데모
 
-## TL;DR - 5 Minutes to Deploy
+## TL;DR - 5분 만에 배포하기
 
 ```bash
-# 1. Configure AWS CLI
+# 1. AWS CLI 설정
 aws configure
 
-# 2. Setup Terraform
+# 2. Terraform 설정
 cd terraform
 cp terraform.tfvars.example terraform.tfvars
-# Edit terraform.tfvars - set s3_bucket_name and container_image
+# terraform.tfvars 편집 - s3_bucket_name과 container_image 설정
 
-# 3. Deploy
+# 3. 배포
 terraform init
 terraform apply -auto-approve
 
-# 4. Get URLs
+# 4. URL 확인
 terraform output cloudfront_domain_name
-terraform output api_gateway_websocket_url
+terraform output alb_dns_name
 ```
 
 ---
 
-## Pre-Demo Checklist (10 Minutes Before)
+## 데모 전 체크리스트 (10분 전)
 
 ```bash
-# Verify Blue environment
+# Blue 환경 확인
 aws ecs describe-services \
   --cluster chatapp-dev-cluster \
   --services chatapp-dev-service-blue \
+  --region ap-northeast-2 \
   --query 'services[0].{Running:runningCount,Status:status}'
 
-# Verify Green environment
+# Green 환경 확인
 aws ecs describe-services \
   --cluster chatapp-dev-cluster \
   --services chatapp-dev-service-green \
+  --region ap-northeast-2 \
   --query 'services[0].{Running:runningCount,Status:status}'
 
-# Get CloudFront URL to share
+# ALB DNS 또는 CloudFront URL 공유용
+terraform output alb_dns_name
 terraform output cloudfront_domain_name
 
-# Verify current traffic split
+# 현재 트래픽 분배 확인
 terraform output blue_weight
 terraform output green_weight
 ```
 
 ---
 
-## Live Demo Commands (Copy & Paste Ready)
+## 라이브 데모 명령어 (복사 & 붙여넣기 준비)
 
-### Stage 1: Show Initial State (Minute 0-1)
+### 1단계: 초기 상태 보여주기 (0-1분)
 ```bash
-terraform output blue_weight
-terraform output green_weight
+terraform output blue_weight   # 90
+terraform output green_weight  # 10
 ```
 
-### Stage 2: 50/50 Split (Minute 1-2)
+### 2단계: 50/50 분할 (1-2분)
 ```bash
 cd terraform
 cat > terraform.tfvars << EOF
-aws_region   = "ap-northeast-1"
+# AWS 기본 설정
+aws_region   = "ap-northeast-2"
 project_name = "chatapp"
 environment  = "dev"
+
+# VPC 설정
 vpc_cidr             = "10.0.0.0/16"
-availability_zones   = ["ap-northeast-1a", "ap-northeast-1c"]
+availability_zones   = ["ap-northeast-2a", "ap-northeast-2c"]
 public_subnet_cidrs  = ["10.0.1.0/24", "10.0.2.0/24"]
 private_subnet_cidrs = ["10.0.11.0/24", "10.0.12.0/24"]
-container_image  = "nginx:latest"
+
+# ECS 설정
+container_image  = "nginx:latest"  # TODO: 실제 채팅 앱 이미지로 변경
 container_port   = 3000
 fargate_cpu      = 256
 fargate_memory   = 512
 desired_count    = 1
+
+# Blue/Green 배포 설정 - 50/50 분할
 blue_weight  = 50
 green_weight = 50
-redis_node_type       = "cache.t3.micro"
-redis_num_cache_nodes = 1
+
+# ElastiCache Redis (멀티 AZ)
+redis_node_type       = "cache.t4g.micro"
+redis_num_cache_nodes = 2
 redis_engine_version  = "7.0"
+
+# DynamoDB
 dynamodb_billing_mode = "PAY_PER_REQUEST"
+
+# S3
 s3_bucket_name = ""
 EOF
 
 terraform apply -auto-approve
 ```
 
-### Stage 3: Green 90% (Minute 2-3)
+### 3단계: Green 90% (2-3분)
 ```bash
-# Just change the weights
-blue_weight  = 10
-green_weight = 90
-
-# Re-run the same command with updated values
+# 가중치만 변경
 cat > terraform.tfvars << EOF
-aws_region   = "ap-northeast-1"
+# AWS 기본 설정
+aws_region   = "ap-northeast-2"
 project_name = "chatapp"
 environment  = "dev"
+
+# VPC 설정
 vpc_cidr             = "10.0.0.0/16"
-availability_zones   = ["ap-northeast-1a", "ap-northeast-1c"]
+availability_zones   = ["ap-northeast-2a", "ap-northeast-2c"]
 public_subnet_cidrs  = ["10.0.1.0/24", "10.0.2.0/24"]
 private_subnet_cidrs = ["10.0.11.0/24", "10.0.12.0/24"]
+
+# ECS 설정
 container_image  = "nginx:latest"
 container_port   = 3000
 fargate_cpu      = 256
 fargate_memory   = 512
 desired_count    = 1
+
+# Blue/Green 배포 설정 - Green 90%
 blue_weight  = 10
 green_weight = 90
-redis_node_type       = "cache.t3.micro"
-redis_num_cache_nodes = 1
+
+# ElastiCache Redis (멀티 AZ)
+redis_node_type       = "cache.t4g.micro"
+redis_num_cache_nodes = 2
 redis_engine_version  = "7.0"
+
+# DynamoDB
 dynamodb_billing_mode = "PAY_PER_REQUEST"
+
+# S3
 s3_bucket_name = ""
 EOF
 
 terraform apply -auto-approve
 ```
 
-### Emergency Rollback
+### 긴급 롤백
 ```bash
-# Rollback to Blue 100%
-blue_weight  = 100
-green_weight = 0
-
-terraform apply -auto-approve
+# Blue 100%로 즉시 롤백
+terraform apply -var="blue_weight=100" -var="green_weight=0" -auto-approve
 ```
 
 ---
 
-## Monitoring Commands
+## 모니터링 명령어
 
-### Real-time ECS Status
+### 실시간 ECS 상태
 ```bash
 watch -n 2 'aws ecs describe-services \
   --cluster chatapp-dev-cluster \
   --services chatapp-dev-service-blue chatapp-dev-service-green \
+  --region ap-northeast-2 \
   --query "services[*].{Service:serviceName,Running:runningCount,Status:status}"'
 ```
 
-### ALB Target Health
+### ALB 타겟 헬스 체크
 ```bash
-# Blue targets
+# Blue 타겟
 aws elbv2 describe-target-health \
   --target-group-arn $(terraform output -raw blue_target_group_arn) \
+  --region ap-northeast-2 \
   --query 'TargetHealthDescriptions[*].{IP:Target.Id,Health:TargetHealth.State}'
 
-# Green targets
+# Green 타겟
 aws elbv2 describe-target-health \
   --target-group-arn $(terraform output -raw green_target_group_arn) \
+  --region ap-northeast-2 \
   --query 'TargetHealthDescriptions[*].{IP:Target.Id,Health:TargetHealth.State}'
 ```
 
-### CloudWatch Logs (Live)
+### CloudWatch 로그 (실시간)
 ```bash
-aws logs tail /ecs/chatapp-dev --follow --format short
+aws logs tail /ecs/chatapp-dev --follow --format short --region ap-northeast-2
+```
+
+### CloudWatch 메트릭 확인
+```bash
+# ALB 4xx 에러
+aws cloudwatch get-metric-statistics \
+  --namespace AWS/ApplicationELB \
+  --metric-name HTTPCode_Target_4XX_Count \
+  --dimensions Name=LoadBalancer,Value=$(terraform output -raw alb_arn_suffix) \
+  --start-time $(date -u -v-10M +%Y-%m-%dT%H:%M:%S) \
+  --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
+  --period 60 \
+  --statistics Sum \
+  --region ap-northeast-2
 ```
 
 ---
 
-## After Demo - Cleanup
+## 데모 후 - 정리
 
 ```bash
-# Empty S3 bucket
-aws s3 rm s3://$(terraform output -raw s3_bucket_name) --recursive
+# S3 버킷 비우기 (ALB 로그, CloudFront)
+aws s3 rm s3://$(terraform output -raw s3_bucket_name) --recursive --region ap-northeast-2
 
-# Destroy everything
+# 모든 리소스 삭제
 terraform destroy -auto-approve
 ```
 
-**Cleanup time**: ~10 minutes
-**Cost if not deleted**: ~$50-70/month
+**정리 소요 시간**: ~10분
+**삭제하지 않을 경우 비용**: 월 ~$70-90
 
 ---
 
-## Troubleshooting
+## 문제 해결
 
-### Issue: Terraform apply fails
+### 문제: Terraform apply 실패
 ```bash
-# Reset Terraform state
+# Terraform 상태 초기화
 rm -rf .terraform .terraform.lock.hcl
 terraform init
 ```
 
-### Issue: ECS task won't start
+### 문제: ECS 태스크가 시작되지 않음
 ```bash
-# Check logs
-aws logs tail /ecs/chatapp-dev --follow
+# 로그 확인
+aws logs tail /ecs/chatapp-dev --follow --region ap-northeast-2
 
-# Check task status
+# 태스크 상태 확인
 aws ecs describe-tasks \
   --cluster chatapp-dev-cluster \
+  --region ap-northeast-2 \
   --tasks $(aws ecs list-tasks \
     --cluster chatapp-dev-cluster \
     --service-name chatapp-dev-service-blue \
+    --region ap-northeast-2 \
     --query 'taskArns[0]' --output text)
 ```
 
-### Issue: Cannot connect to website
+### 문제: 웹사이트에 연결할 수 없음
 ```bash
-# Check ALB status
+# ALB 상태 확인
 aws elbv2 describe-load-balancers \
+  --region ap-northeast-2 \
   --query 'LoadBalancers[?contains(LoadBalancerName, `chatapp`)].{DNS:DNSName,State:State.Code}'
 
-# Check target health
+# 타겟 헬스 확인
 aws elbv2 describe-target-health \
-  --target-group-arn $(terraform output -raw blue_target_group_arn)
+  --target-group-arn $(terraform output -raw blue_target_group_arn) \
+  --region ap-northeast-2
 ```
 
 ---
 
-## Key Terraform Outputs
+## 주요 Terraform Outputs
 
 ```bash
-# Get all important URLs
+# 모든 중요 URL 가져오기
 terraform output -json | jq -r '
   {
     cloudfront: .cloudfront_domain_name.value,
-    websocket: .api_gateway_websocket_url.value,
     alb: .alb_dns_name.value,
     redis: .redis_endpoint.value
   }
@@ -223,64 +265,78 @@ terraform output -json | jq -r '
 
 ---
 
-## Presentation Tips
+## 프레젠테이션 팁
 
-1. **Prepare 2 terminal windows**:
-   - Window 1: Terraform commands
-   - Window 2: Monitoring (watch command)
+1. **2개의 터미널 창 준비**:
+   - 창 1: Terraform 명령어
+   - 창 2: 모니터링 (watch 명령어)
 
-2. **Increase terminal font size** for visibility
+2. **시인성을 위해 터미널 폰트 크기 증가**
 
-3. **Test the full demo** at least once before presentation
+3. **프레젠테이션 전 최소 1회 전체 데모 테스트**
 
-4. **Have rollback commands ready** in a text file
+4. **텍스트 파일에 롤백 명령어 준비**
 
-5. **Set a timer** - each stage should be ~1 minute
+5. **타이머 설정** - 각 단계는 약 1분
 
-6. **Ask audience**: "Is anyone disconnected?" after each traffic shift
+6. **청중에게 질문**: "트래픽 전환 후 연결 끊긴 분 계신가요?"
 
-7. **Show CloudWatch dashboard** for visual appeal
+7. **CloudWatch 대시보드 표시** - 시각적 효과
 
 ---
 
-## Cost Optimization
+## 비용 최적화
 
-### During Development
+### 개발 중 (데모 외 시간)
 ```bash
-# Stop ECS tasks when not needed
+# 필요하지 않을 때 ECS 태스크 중지
 aws ecs update-service \
   --cluster chatapp-dev-cluster \
   --service chatapp-dev-service-blue \
+  --region ap-northeast-2 \
   --desired-count 0
 
 aws ecs update-service \
   --cluster chatapp-dev-cluster \
   --service chatapp-dev-service-green \
+  --region ap-northeast-2 \
   --desired-count 0
 ```
 
-### Resume Before Demo
+### 데모 전 재개
 ```bash
-# Start tasks again
+# 태스크 다시 시작
 aws ecs update-service \
   --cluster chatapp-dev-cluster \
   --service chatapp-dev-service-blue \
+  --region ap-northeast-2 \
   --desired-count 1
 
 aws ecs update-service \
   --cluster chatapp-dev-cluster \
   --service chatapp-dev-service-green \
+  --region ap-northeast-2 \
   --desired-count 1
 ```
 
-**Savings**: Reduces Fargate costs by ~80% during non-demo hours
+**절감 효과**: 데모 외 시간에 Fargate 비용 ~80% 절감
 
 ---
 
-## Important Notes
+## 중요 참고사항
 
-- NAT Gateway runs 24/7 (~$32/month) - cannot be stopped
-- Destroying/recreating infrastructure takes ~20 minutes total
-- CloudFront takes ~15 minutes to deploy initially
-- ALB takes ~5 minutes to become active
-- First demo rehearsal recommended 1 day before presentation
+- **리전**: ap-northeast-2 (서울)
+- **NAT Gateway**: 24/7 실행 (월 ~$32) - 중지 불가
+- **Redis**: 멀티 AZ (프라이머리 + 리플리카) - 월 ~$15
+- **인프라 삭제/재생성**: 총 ~20분 소요
+- **CloudFront**: 최초 배포 시 ~15분 소요
+- **ALB**: 활성화까지 ~5분 소요
+- **프레젠테이션 1일 전 첫 데모 리허설 권장**
+
+## 멀티 AZ 구성
+
+현재 구성은 2개의 가용 영역(ap-northeast-2a, ap-northeast-2c)을 사용합니다:
+- **ALB**: 2개 AZ에 분산 배치 (AWS 요구사항)
+- **NAT Gateway**: 1개만 사용 (비용 절감) - 두 AZ가 공유
+- **Redis**: 멀티 AZ (프라이머리 + 리드 리플리카) - 자동 페일오버
+- **ECS Fargate**: 2개 AZ에 배포 가능
