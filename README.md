@@ -1,5 +1,5 @@
 # Softbank 해커톤 실시간 채팅 서비스 AWS Infrastructure
-![Architecture](CloudArchitecture.png)
+![Architecture](cloudinfra.png)
 
 ## 프로젝트 개요
 
