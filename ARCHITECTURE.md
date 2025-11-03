@@ -37,14 +37,13 @@
 
 #### 4. 데이터 계층
 - **DynamoDB**: NoSQL 데이터베이스
-  - `messages` 테이블: 채팅 메시지 저장
-  - `connections` 테이블: WebSocket 연결 정보
-  - `user-counter` 테이블: 자동 증가 사용자 ID 관리
-- **ElastiCache Redis**: 인메모리 캐싱 및 세션 관리
+  - `messages` 테이블: 단일 채팅창 메시지 저장 (PK: pk="CHAT", TTL: 1시간)
+  - 닉네임: Guest-XXXX 형식 (백엔드에서 랜덤 생성)
+- **ElastiCache Redis**: 인메모리 캐싱 및 Pub/Sub
   - **멀티 AZ 구성**: 프라이머리 1개 + 리드 리플리카 1개
   - cache.t4g.micro 인스턴스 타입
   - 자동 페일오버 활성화
-  - 리전 엔드포인트 사용 (애플리케이션 수정 불필요)
+  - 메시지 브로드캐스트용 Pub/Sub 채널
 
 #### 5. 네트워킹
 - **VPC**: 격리된 네트워크 환경 (10.0.0.0/16)

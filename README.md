@@ -217,30 +217,22 @@ aws elbv2 describe-target-health \
 
 ### 테이블 개요
 
-이 프로젝트는 3개의 DynamoDB 테이블을 사용합니다:
+이 프로젝트는 **1개의 DynamoDB 테이블**을 사용합니다:
 
-1. **Messages** (`chatapp-dev-messages`): 채팅 메시지 저장
-2. **Connections** (`chatapp-dev-connections`): WebSocket 연결 정보
-3. **User Counter** (`chatapp-dev-user-counter`): 자동 증가 사용자 ID 관리
+**Messages** (`chatapp-dev-messages`): 단일 채팅창의 모든 메시지 저장
 
 ### 상세 스키마 및 사용법
 
-자세한 테이블 구조, 쿼리 예제, Redis 캐시 사용법은 [DEVELOPER_GUIDE.md](./DEVELOPER_GUIDE.md)를 참조하세요.
+자세한 테이블 구조, 쿼리 예제, Redis Pub/Sub 사용법은 [DEVELOPER_GUIDE.md](./DEVELOPER_GUIDE.md)를 참조하세요.
 
 #### 간단 요약
 
 **Messages 테이블**:
-- Partition Key: `roomId` (채팅방 ID)
+- Partition Key: `pk` (고정값: "CHAT")
 - Sort Key: `timestamp` (메시지 시간)
-- GSI: `userId-timestamp-index` (사용자별 메시지 조회)
-
-**Connections 테이블**:
-- Partition Key: `connectionId` (WebSocket 연결 ID)
-- GSI: `userId-index` (사용자별 연결 조회)
-
-**User Counter 테이블**:
-- Partition Key: `counterId` (카운터 식별자)
-- Atomic counter로 사용자 ID 자동 생성
+- TTL: **1시간** 후 자동 삭제
+- 모든 메시지가 같은 파티션 → Query로 빠른 조회
+- 닉네임: Guest-1234 형식 (백엔드에서 랜덤 생성)
 
 ## 배포 후 작업
 
