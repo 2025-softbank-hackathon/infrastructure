@@ -1,4 +1,4 @@
-# VPC Module
+# VPC 모듈
 module "vpc" {
   source = "./modules/vpc"
 
@@ -10,7 +10,7 @@ module "vpc" {
   private_subnet_cidrs = var.private_subnet_cidrs
 }
 
-# Security Groups Module
+# Security Groups 모듈
 module "security_groups" {
   source = "./modules/security-groups"
 
@@ -20,7 +20,7 @@ module "security_groups" {
   vpc_cidr     = var.vpc_cidr
 }
 
-# IAM Module
+# IAM 모듈
 module "iam" {
   source = "./modules/iam"
 
@@ -30,7 +30,7 @@ module "iam" {
   ecr_repository_arns  = [] # ECR 사용 시 추가
 }
 
-# DynamoDB Module
+# DynamoDB 모듈
 module "dynamodb" {
   source = "./modules/dynamodb"
 
@@ -41,7 +41,7 @@ module "dynamodb" {
   write_capacity  = var.dynamodb_write_capacity
 }
 
-# ElastiCache Redis Module
+# ElastiCache Redis 모듈
 module "elasticache" {
   source = "./modules/elasticache"
 
@@ -54,7 +54,7 @@ module "elasticache" {
   security_group_ids  = [module.security_groups.redis_sg_id]
 }
 
-# ALB Module
+# ALB 모듈
 module "alb" {
   source = "./modules/alb"
 
@@ -68,7 +68,7 @@ module "alb" {
   green_weight       = var.green_weight
 }
 
-# ECS Fargate Module
+# ECS Fargate 모듈
 module "ecs" {
   source = "./modules/ecs"
 
@@ -96,19 +96,20 @@ module "ecs" {
   }
 }
 
-# API Gateway WebSocket Module
-module "api_gateway" {
-  source = "./modules/api-gateway"
+# API Gateway 모듈 제거 - Public ALB를 직접 사용
 
-  project_name       = var.project_name
-  environment        = var.environment
-  vpc_id             = module.vpc.vpc_id
-  private_subnet_ids = module.vpc.private_subnet_ids
-  security_group_ids = [module.security_groups.vpc_link_sg_id]
-  alb_listener_arn   = module.alb.listener_arn
+# CloudWatch 모니터링 모듈
+module "monitoring" {
+  source = "./modules/monitoring"
+
+  project_name                     = var.project_name
+  environment                      = var.environment
+  alb_arn_suffix                   = module.alb.alb_arn_suffix
+  blue_target_group_arn_suffix     = module.alb.blue_target_group_arn_suffix
+  green_target_group_arn_suffix    = module.alb.green_target_group_arn_suffix
 }
 
-# CloudFront & S3 Module
+# CloudFront & S3 모듈
 module "cloudfront" {
   source = "./modules/cloudfront"
 
@@ -117,12 +118,12 @@ module "cloudfront" {
   s3_bucket_name  = var.s3_bucket_name != "" ? var.s3_bucket_name : "${var.project_name}-${var.environment}-static-${random_id.bucket_suffix.hex}"
 }
 
-# Random ID for S3 bucket name uniqueness
+# S3 버킷 이름 고유성을 위한 Random ID
 resource "random_id" "bucket_suffix" {
   byte_length = 4
 }
 
-# VPC Endpoint for DynamoDB
+# DynamoDB용 VPC Endpoint
 resource "aws_vpc_endpoint" "dynamodb" {
   vpc_id            = module.vpc.vpc_id
   service_name      = "com.amazonaws.${var.aws_region}.dynamodb"

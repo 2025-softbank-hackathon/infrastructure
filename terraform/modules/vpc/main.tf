@@ -55,7 +55,7 @@ resource "aws_subnet" "private" {
   }
 }
 
-# Elastic IP for NAT Gateway (single NAT for cost saving)
+# NAT Gateway용 Elastic IP (비용 절감을 위한 단일 NAT)
 resource "aws_eip" "nat" {
   domain = "vpc"
 
@@ -68,7 +68,7 @@ resource "aws_eip" "nat" {
   depends_on = [aws_internet_gateway.main]
 }
 
-# NAT Gateway (single NAT in first AZ for cost saving)
+# NAT Gateway (비용 절감을 위해 첫 번째 AZ에만 단일 NAT 사용)
 resource "aws_nat_gateway" "main" {
   allocation_id = aws_eip.nat.id
   subnet_id     = aws_subnet.public[0].id
@@ -106,7 +106,7 @@ resource "aws_route_table_association" "public" {
   route_table_id = aws_route_table.public.id
 }
 
-# Private Route Table (single route table using single NAT Gateway)
+# 프라이빗 라우트 테이블 (단일 NAT Gateway를 사용하는 단일 라우트 테이블)
 resource "aws_route_table" "private" {
   vpc_id = aws_vpc.main.id
 
@@ -122,7 +122,7 @@ resource "aws_route_table" "private" {
   }
 }
 
-# Private Route Table Associations (all private subnets use the same route table)
+# 프라이빗 라우트 테이블 연결 (모든 프라이빗 서브넷이 동일한 라우트 테이블 사용)
 resource "aws_route_table_association" "private" {
   count = length(aws_subnet.private)
 

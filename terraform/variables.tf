@@ -1,131 +1,131 @@
 variable "aws_region" {
-  description = "AWS region"
+  description = "AWS 리전"
   type        = string
-  default     = "ap-northeast-1"
+  default     = "ap-northeast-2"
 }
 
 variable "project_name" {
-  description = "Project name"
+  description = "프로젝트 이름"
   type        = string
   default     = "chatapp"
 }
 
 variable "environment" {
-  description = "Environment name"
+  description = "환경 이름"
   type        = string
   default     = "dev"
 }
 
-# VPC Configuration
+# VPC 설정
 variable "vpc_cidr" {
-  description = "CIDR block for VPC"
+  description = "VPC의 CIDR 블록"
   type        = string
   default     = "10.0.0.0/16"
 }
 
 variable "availability_zones" {
-  description = "Availability zones (ALB requires minimum 2 subnets in different AZs)"
+  description = "가용 영역 (ALB는 최소 2개의 서로 다른 AZ 서브넷 필요)"
   type        = list(string)
-  default     = ["ap-northeast-1a", "ap-northeast-1c"]
+  default     = ["ap-northeast-2a", "ap-northeast-2c"]
 }
 
 variable "public_subnet_cidrs" {
-  description = "CIDR blocks for public subnets (ALB requires minimum 2)"
+  description = "퍼블릭 서브넷 CIDR 블록 (ALB용 최소 2개 필요)"
   type        = list(string)
   default     = ["10.0.1.0/24", "10.0.2.0/24"]
 }
 
 variable "private_subnet_cidrs" {
-  description = "CIDR blocks for private subnets (single AZ for cost saving, but need 2 for redundancy)"
+  description = "프라이빗 서브넷 CIDR 블록 (2개 AZ에 배포하되, 실제 리소스는 비용 절감을 위해 최소화)"
   type        = list(string)
   default     = ["10.0.11.0/24", "10.0.12.0/24"]
 }
 
-# ECS Configuration
+# ECS 설정
 variable "container_image" {
-  description = "Docker image for the chat application"
+  description = "채팅 애플리케이션용 Docker 이미지"
   type        = string
   default     = "nginx:latest" # 실제 채팅 앱 이미지로 변경 필요
 }
 
 variable "container_port" {
-  description = "Container port"
+  description = "컨테이너 포트"
   type        = number
   default     = 3000
 }
 
 variable "fargate_cpu" {
-  description = "Fargate CPU units"
+  description = "Fargate CPU 유닛"
   type        = number
   default     = 256
 }
 
 variable "fargate_memory" {
-  description = "Fargate memory in MB"
+  description = "Fargate 메모리 (MB)"
   type        = number
   default     = 512
 }
 
 variable "desired_count" {
-  description = "Desired number of Fargate tasks (1 for hackathon/dev to save costs)"
+  description = "Fargate 태스크 희망 개수 (해커톤/개발 환경에서는 1로 설정하여 비용 절감)"
   type        = number
   default     = 1
 }
 
-# Blue/Green Deployment Configuration
+# Blue/Green 배포 설정
 variable "blue_weight" {
-  description = "Traffic weight for blue target group (0-100)"
+  description = "Blue 타겟 그룹 트래픽 가중치 (0-100)"
   type        = number
   default     = 90
 }
 
 variable "green_weight" {
-  description = "Traffic weight for green target group (0-100)"
+  description = "Green 타겟 그룹 트래픽 가중치 (0-100)"
   type        = number
   default     = 10
 }
 
-# ElastiCache Configuration
+# ElastiCache 설정
 variable "redis_node_type" {
-  description = "ElastiCache Redis node type"
+  description = "ElastiCache Redis 노드 타입"
   type        = string
-  default     = "cache.t3.micro"
+  default     = "cache.t4g.micro"
 }
 
 variable "redis_num_cache_nodes" {
-  description = "Number of cache nodes"
+  description = "캐시 노드 개수 (멀티 AZ: 프라이머리 1 + 리드 리플리카 1)"
   type        = number
-  default     = 1
+  default     = 2
 }
 
 variable "redis_engine_version" {
-  description = "Redis engine version"
+  description = "Redis 엔진 버전"
   type        = string
   default     = "7.0"
 }
 
-# DynamoDB Configuration
+# DynamoDB 설정
 variable "dynamodb_billing_mode" {
-  description = "DynamoDB billing mode"
+  description = "DynamoDB 과금 모드"
   type        = string
   default     = "PAY_PER_REQUEST"
 }
 
 variable "dynamodb_read_capacity" {
-  description = "DynamoDB read capacity units (for PROVISIONED mode)"
+  description = "DynamoDB 읽기 용량 유닛 (PROVISIONED 모드용)"
   type        = number
   default     = 5
 }
 
 variable "dynamodb_write_capacity" {
-  description = "DynamoDB write capacity units (for PROVISIONED mode)"
+  description = "DynamoDB 쓰기 용량 유닛 (PROVISIONED 모드용)"
   type        = number
   default     = 5
 }
 
-# CloudFront & S3 Configuration
+# CloudFront & S3 설정
 variable "s3_bucket_name" {
-  description = "S3 bucket name for static website hosting"
+  description = "정적 웹사이트 호스팅용 S3 버킷 이름"
   type        = string
   default     = "" # 실제 고유한 버킷 이름으로 변경 필요
 }

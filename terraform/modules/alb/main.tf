@@ -1,3 +1,53 @@
+# S3 버킷 for ALB 액세스 로그
+resource "aws_s3_bucket" "alb_logs" {
+  bucket = "${var.project_name}-${var.environment}-alb-logs-${random_id.bucket_suffix.hex}"
+
+  tags = {
+    Name        = "${var.project_name}-${var.environment}-alb-logs"
+    Project     = var.project_name
+    Environment = var.environment
+  }
+}
+
+resource "random_id" "bucket_suffix" {
+  byte_length = 4
+}
+
+# S3 버킷 소유권 설정
+resource "aws_s3_bucket_ownership_controls" "alb_logs" {
+  bucket = aws_s3_bucket.alb_logs.id
+
+  rule {
+    object_ownership = "BucketOwnerPreferred"
+  }
+}
+
+# S3 버킷 ACL
+resource "aws_s3_bucket_acl" "alb_logs" {
+  depends_on = [aws_s3_bucket_ownership_controls.alb_logs]
+  bucket     = aws_s3_bucket.alb_logs.id
+  acl        = "private"
+}
+
+# S3 버킷 정책 for ALB 액세스 로그
+resource "aws_s3_bucket_policy" "alb_logs" {
+  bucket = aws_s3_bucket.alb_logs.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:aws:iam::600734575887:root"  # ap-northeast-2 ELB 서비스 계정
+        }
+        Action   = "s3:PutObject"
+        Resource = "${aws_s3_bucket.alb_logs.arn}/*"
+      }
+    ]
+  })
+}
+
 # Application Load Balancer
 resource "aws_lb" "main" {
   name               = "${var.project_name}-${var.environment}-alb"
@@ -6,9 +56,14 @@ resource "aws_lb" "main" {
   security_groups    = var.security_group_ids
   subnets            = var.public_subnet_ids
 
-  enable_deletion_protection = false
-  enable_http2              = true
+  enable_deletion_protection       = false
+  enable_http2                     = true
   enable_cross_zone_load_balancing = true
+
+  access_logs {
+    bucket  = aws_s3_bucket.alb_logs.id
+    enabled = true
+  }
 
   tags = {
     Name        = "${var.project_name}-${var.environment}-alb"
