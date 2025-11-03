@@ -197,7 +197,7 @@ public class ChatController {
 
 ---
 
-## 🎯 API 사용법
+## API 사용법 예시
 
 ```bash
 # 1. 입장 (닉네임 받기)
@@ -213,7 +213,7 @@ curl -X POST http://localhost:8080/api/send \
 curl http://localhost:8080/api/messages
 ```
 
-## 📝 구현 체크리스트
+## 구현 체크리스트
 
 - [ ] DynamoDB 테이블 생성 (pk="CHAT", TTL 1시간)
 - [ ] Redis 연결 설정
