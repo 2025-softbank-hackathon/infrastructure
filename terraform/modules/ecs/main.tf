@@ -1,14 +1,4 @@
-# CloudWatch Log Group for ECS
-resource "aws_cloudwatch_log_group" "ecs" {
-  name              = "/ecs/${var.project_name}-${var.environment}"
-  retention_in_days = 7
-
-  tags = {
-    Name        = "${var.project_name}-${var.environment}-ecs-logs"
-    Project     = var.project_name
-    Environment = var.environment
-  }
-}
+# CloudWatch Log Group은 monitoring 모듈에서 생성되므로 여기서는 제거
 
 # ECS Cluster
 resource "aws_ecs_cluster" "main" {
@@ -59,7 +49,7 @@ resource "aws_ecs_task_definition" "blue" {
       logConfiguration = {
         logDriver = "awslogs"
         options = {
-          "awslogs-group"         = aws_cloudwatch_log_group.ecs.name
+          "awslogs-group"         = var.log_group_name
           "awslogs-region"        = data.aws_region.current.name
           "awslogs-stream-prefix" = "blue"
         }
@@ -116,7 +106,7 @@ resource "aws_ecs_task_definition" "green" {
       logConfiguration = {
         logDriver = "awslogs"
         options = {
-          "awslogs-group"         = aws_cloudwatch_log_group.ecs.name
+          "awslogs-group"         = var.log_group_name
           "awslogs-region"        = data.aws_region.current.name
           "awslogs-stream-prefix" = "green"
         }
@@ -160,10 +150,8 @@ resource "aws_ecs_service" "blue" {
     container_port   = var.container_port
   }
 
-  deployment_configuration {
-    maximum_percent         = 200
-    minimum_healthy_percent = 100
-  }
+  deployment_maximum_percent         = 200
+  deployment_minimum_healthy_percent = 100
 
   enable_execute_command = true
 
@@ -197,10 +185,8 @@ resource "aws_ecs_service" "green" {
     container_port   = var.container_port
   }
 
-  deployment_configuration {
-    maximum_percent         = 200
-    minimum_healthy_percent = 100
-  }
+  deployment_maximum_percent         = 200
+  deployment_minimum_healthy_percent = 100
 
   enable_execute_command = true
 

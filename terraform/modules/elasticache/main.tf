@@ -30,7 +30,7 @@ resource "aws_elasticache_parameter_group" "redis" {
 # ElastiCache Replication Group (Redis) - 멀티 AZ 구성
 resource "aws_elasticache_replication_group" "redis" {
   replication_group_id       = "${var.project_name}-${var.environment}-redis"
-  replication_group_description = "Redis cluster for ${var.project_name} ${var.environment} (Multi-AZ)"
+  description                = "Redis cluster for ${var.project_name} ${var.environment} (Multi-AZ)"
   engine                     = "redis"
   engine_version             = var.engine_version
   node_type                  = var.node_type

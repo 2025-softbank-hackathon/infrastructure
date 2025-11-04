@@ -1,7 +1,26 @@
 {
   "permissions": {
     "allow": [
-      "Bash(mkdir:*)"
+      "Bash(mkdir:*)",
+      "Bash(terraform version:*)",
+      "Bash(rm:*)",
+      "Bash(terraform init:*)",
+      "Bash(terraform plan:*)",
+      "Bash(xattr:*)",
+      "Bash(./.terraform/providers/registry.terraform.io/hashicorp/aws/5.100.0/darwin_amd64/terraform-provider-aws_v5.100.0_x5:*)",
+      "Bash(echo:*)",
+      "Bash(TF_LOG=DEBUG terraform plan:*)",
+      "Bash(ulimit:*)",
+      "Bash(TF_PLUGIN_TIMEOUT=300 terraform plan:*)",
+      "Bash(terraform:*)",
+      "Bash(terraform providers:*)",
+      "Bash(TF_PLUGIN_TIMEOUT=300 terraform init:*)",
+      "Bash(export TF_PLUGIN_TIMEOUT=300)",
+      "Bash(aws ecs list-services:*)",
+      "Bash(aws ecs describe-services:*)",
+      "Bash(aws ecs list-tasks:*)",
+      "Bash(aws ecs describe-tasks:*)",
+      "Bash(aws logs tail:*)"
     ],
     "deny": [],
     "ask": []

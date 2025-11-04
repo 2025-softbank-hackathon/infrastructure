@@ -97,6 +97,7 @@ module "ecs" {
   task_role_arn         = module.iam.ecs_task_role_arn
   blue_target_group_arn = module.alb.blue_target_group_arn
   green_target_group_arn = module.alb.green_target_group_arn
+  log_group_name        = module.monitoring.ecs_log_group_name
 
   # 환경 변수
   environment_variables = {

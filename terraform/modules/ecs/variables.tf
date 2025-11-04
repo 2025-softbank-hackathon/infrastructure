@@ -77,3 +77,8 @@ variable "environment_variables" {
   type        = map(string)
   default     = {}
 }
+
+variable "log_group_name" {
+  description = "CloudWatch log group name for ECS tasks"
+  type        = string
+}

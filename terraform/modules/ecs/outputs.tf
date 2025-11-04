@@ -40,5 +40,5 @@ output "green_task_definition_arn" {
 
 output "log_group_name" {
   description = "CloudWatch log group name"
-  value       = aws_cloudwatch_log_group.ecs.name
+  value       = var.log_group_name
 }
