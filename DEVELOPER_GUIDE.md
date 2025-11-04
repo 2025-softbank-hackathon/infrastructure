@@ -253,10 +253,29 @@ public class ChatController {
 
 ## 환경 변수 설정
 
+### 중요: 포트 설정 (필수!)
+**애플리케이션은 반드시 3000 포트에서 실행되어야 합니다.**
+
+`application.properties`:
+```properties
+server.port=3000
+```
+
+또는 `application.yml`:
+```yaml
+server:
+  port: 3000
+```
+
+### AWS 리소스 환경 변수
+
 애플리케이션에서 사용할 환경 변수:
 
 ```yaml
 # application.yml
+server:
+  port: 3000  # 필수! ALB와 ECS가 3000 포트를 사용
+
 spring:
   data:
     redis:
@@ -409,3 +428,94 @@ dependencies {
 - **SSE (Server-Sent Events)**: 단방향 (서버 → 클라이언트만)
 
 현재 아키텍처는 **WebSocket** 권장 (ALB가 WebSocket 업그레이드 지원)
+
+---
+
+## 배포 가이드 (AWS ECS)
+
+### 인프라 정보
+| 항목 | 값 |
+|-----|---|
+| **AWS 리전** | `ap-northeast-2` (서울) |
+| **ECR 리포지토리** | `chatapp-dev` |
+| **컨테이너 포트** | `3000` (필수!) |
+| **ECS 클러스터** | `chatapp-dev-cluster` |
+| **Blue 서비스** | `chatapp-dev-service-blue` (90% 트래픽) |
+| **Green 서비스** | `chatapp-dev-service-green` (10% 트래픽) |
+
+### Dockerfile 예시
+```dockerfile
+FROM openjdk:17-slim
+WORKDIR /app
+COPY build/libs/*.jar app.jar
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+  CMD curl -f http://localhost:3000/health || exit 1
+
+# 포트 노출
+EXPOSE 3000
+
+# 실행
+ENTRYPOINT ["java", "-jar", "app.jar"]
+```
+
+### 빠른 배포 (AWS CLI)
+
+```bash
+# 1. 프로젝트 빌드
+./gradlew bootJar  # 또는 ./mvnw package
+
+# 2. ECR 로그인
+aws ecr get-login-password --region ap-northeast-2 | \
+  docker login --username AWS --password-stdin <AWS_ACCOUNT_ID>.dkr.ecr.ap-northeast-2.amazonaws.com
+
+# 3. Docker 이미지 빌드 & 태그
+docker build -t chatapp:v1.0.0 .
+docker tag chatapp:v1.0.0 <AWS_ACCOUNT_ID>.dkr.ecr.ap-northeast-2.amazonaws.com/chatapp-dev:v1.0.0
+
+# 4. ECR에 푸시
+docker push <AWS_ACCOUNT_ID>.dkr.ecr.ap-northeast-2.amazonaws.com/chatapp-dev:v1.0.0
+
+# 5. ECS 서비스 업데이트 (Blue 배포)
+aws ecs update-service \
+  --cluster chatapp-dev-cluster \
+  --service chatapp-dev-service-blue \
+  --force-new-deployment \
+  --region ap-northeast-2
+
+# 6. 배포 완료 대기
+aws ecs wait services-stable \
+  --cluster chatapp-dev-cluster \
+  --services chatapp-dev-service-blue \
+  --region ap-northeast-2
+
+echo "✅ 배포 완료!"
+```
+
+### 배포 확인
+```bash
+# ALB DNS 확인
+aws elbv2 describe-load-balancers \
+  --names chatapp-dev-alb \
+  --query 'LoadBalancers[0].DNSName' \
+  --output text \
+  --region ap-northeast-2
+
+# Health Check
+curl http://<ALB_DNS_NAME>/health
+
+# API 테스트
+curl -X POST http://<ALB_DNS_NAME>/api/join
+```
+
+### 로그 확인
+```bash
+# 실시간 로그
+aws logs tail /ecs/chatapp-dev --follow --region ap-northeast-2
+
+# 에러만 필터링
+aws logs tail /ecs/chatapp-dev --follow --filter-pattern "ERROR" --region ap-northeast-2
+```
+
+**자세한 배포 가이드**: `test-app/TEST_GUIDE.md` 참고
