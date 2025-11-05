@@ -1,0 +1,37 @@
+# terraform/main.tf 파일 끝에 추가할 코드
+
+# Lambda 스케줄러 모듈 (야간 인프라 자동 중단/재가동)
+# 매일 00:00-08:00 KST 시간대에 ECS 서비스를 중단하여 비용 절감
+module "lambda_scheduler" {
+  source = "./modules/lambda-scheduler"
+
+  project_name        = var.project_name
+  environment         = var.environment
+  aws_region          = var.aws_region
+  cluster_name        = module.ecs.cluster_name
+  blue_service_name   = module.ecs.blue_service_name
+  green_service_name  = module.ecs.green_service_name
+  blue_desired_count  = var.desired_count
+  green_desired_count = 1  # Green은 항상 1개
+}
+
+# Outputs 추가
+output "scheduler_stop_time" {
+  description = "Infrastructure stop time (KST)"
+  value       = module.lambda_scheduler.stop_schedule
+}
+
+output "scheduler_start_time" {
+  description = "Infrastructure start time (KST)"
+  value       = module.lambda_scheduler.start_schedule
+}
+
+output "scheduler_stop_function" {
+  description = "Stop infrastructure Lambda function name"
+  value       = module.lambda_scheduler.stop_function_name
+}
+
+output "scheduler_start_function" {
+  description = "Start infrastructure Lambda function name"
+  value       = module.lambda_scheduler.start_function_name
+}

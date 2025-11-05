@@ -135,6 +135,16 @@ resource "random_id" "bucket_suffix" {
   byte_length = 4
 }
 
-# DynamoDB 접근: VPC Endpoint 제거
-# Fargate Task는 NAT Gateway를 통해 DynamoDB의 Public Endpoint로 접근
-# 이는 구성을 단순화하고, NAT Gateway가 이미 ECR 접근을 위해 필요하므로 추가 비용 없음
+# Lambda 스케줄러 모듈 (야간 인프라 자동 중단/재가동)
+module "lambda_scheduler" {
+  source = "./modules/lambda-scheduler"
+
+  project_name        = var.project_name
+  environment         = var.environment
+  aws_region          = var.aws_region
+  cluster_name        = module.ecs.cluster_name
+  blue_service_name   = module.ecs.blue_service_name
+  green_service_name  = module.ecs.green_service_name
+  blue_desired_count  = var.desired_count
+  green_desired_count = 1
+}

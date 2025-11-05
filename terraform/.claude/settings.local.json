@@ -20,7 +20,9 @@
       "Bash(aws ecs describe-services:*)",
       "Bash(aws ecs list-tasks:*)",
       "Bash(aws ecs describe-tasks:*)",
-      "Bash(aws logs tail:*)"
+      "Bash(aws logs tail:*)",
+      "Bash(chmod:*)",
+      "Bash(zip:*)"
     ],
     "deny": [],
     "ask": []
