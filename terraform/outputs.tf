@@ -93,3 +93,19 @@ output "internet_gateway_id" {
   description = "Internet Gateway ID"
   value       = module.vpc.internet_gateway_id
 }
+
+# Slack 알림 출력
+output "slack_notification_lambda_arn" {
+  description = "Slack 알림 Lambda 함수 ARN"
+  value       = module.slack_notification.lambda_function_arn
+}
+
+output "slack_notification_lambda_name" {
+  description = "Slack 알림 Lambda 함수 이름"
+  value       = module.slack_notification.lambda_function_name
+}
+
+output "slack_parameter_store_name" {
+  description = "Slack Webhook URL을 저장해야 하는 Parameter Store 경로"
+  value       = module.slack_notification.parameter_store_name
+}

@@ -148,3 +148,16 @@ module "lambda_scheduler" {
   blue_desired_count  = var.desired_count
   green_desired_count = 1
 }
+
+# Slack 알림 모듈 (블루/그린 배포 이벤트 알림)
+module "slack_notification" {
+  source = "./modules/slack-notification"
+
+  project_name                    = var.project_name
+  environment                     = var.environment
+  aws_region                      = var.aws_region
+  ecs_cluster_arn                 = module.ecs.cluster_arn
+  slack_webhook_parameter_name    = var.slack_webhook_parameter_name
+  enable_alb_health_notifications = var.enable_alb_health_notifications
+  target_group_arns               = var.enable_alb_health_notifications ? [module.alb.blue_target_group_arn, module.alb.green_target_group_arn] : []
+}

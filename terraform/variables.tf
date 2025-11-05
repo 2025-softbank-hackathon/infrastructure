@@ -148,3 +148,16 @@ variable "s3_bucket_name" {
   type        = string
   default     = "" # 실제 고유한 버킷 이름으로 변경 필요
 }
+
+# Slack 알림 설정
+variable "slack_webhook_parameter_name" {
+  description = "Slack Webhook URL이 저장된 AWS Parameter Store 경로"
+  type        = string
+  default     = "/chatapp/slack/webhook-url"
+}
+
+variable "enable_alb_health_notifications" {
+  description = "ALB 타겟 헬스 체크 결과를 Slack으로 알림 (옵션)"
+  type        = bool
+  default     = false
+}
