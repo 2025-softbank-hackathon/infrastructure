@@ -1,24 +1,38 @@
-# CI 팀 가이드 - 빌드 & ECR 푸시
+CI/CD 가이드현재 ECS는 새 이미지를 사용하도록 강제 업데이트 적용되어있음.
+
+블루환경, 그린환경 강제 배포 명령어:
+
+```bash
+aws ecs update-service \
+  --cluster chatapp-dev-cluster \
+  --service chatapp-dev-service-blue \
+  --force-new-deployment \
+  --region ap-northeast-2
+
+aws ecs update-service \
+  --cluster chatapp-dev-cluster \
+  --service chatapp-dev-service-green \
+  --force-new-deployment \
+  --region ap-northeast-2
+```
+
 
 ## 목표
 코드를 빌드하고 Docker 이미지로 만들어 ECR에 업로드
 
 **산출물**: `137068226866.dkr.ecr.ap-northeast-2.amazonaws.com/chatapp-dev:v1.0.0`
-
 ---
-
 ## 사전 준비
 
+환경 변수 설정:
+
 ```bash
-# 환경 변수 설정
 export AWS_ACCOUNT_ID=137068226866
 export AWS_REGION=ap-northeast-2
 export ECR_REPOSITORY=chatapp-dev
 export IMAGE_TAG=v1.0.0  # 버전에 맞게 변경
 ```
-
 ---
-
 ## Step 1: 애플리케이션 빌드 (자바 스프링 예시)
 
 ```bash
@@ -31,9 +45,7 @@ export IMAGE_TAG=v1.0.0  # 버전에 맞게 변경
 # 빌드 결과 확인
 ls -lh build/libs/*.jar
 ```
-
 ---
-
 ## Step 2: Docker 이미지 빌드
 
 ### 중요: Apple Silicon Mac 사용 시 필수!
@@ -74,11 +86,11 @@ docker images | grep chatapp
 
 # 로컬 테스트 (선택사항)
 docker run -p 3000:3000 chatapp:${IMAGE_TAG}
+
 # 다른 터미널에서: curl http://localhost:3000/health
 ```
 
 ---
-
 ## Step 3: ECR에 푸시
 
 ### 3-1. ECR 로그인
@@ -87,9 +99,9 @@ docker run -p 3000:3000 chatapp:${IMAGE_TAG}
 aws ecr get-login-password --region ${AWS_REGION} | \
   docker login --username AWS --password-stdin \
   ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
-
-# 성공 메시지: "Login Succeeded"
 ```
+
+성공 메시지: "Login Succeeded"
 
 ### 3-2. 이미지 태그
 
@@ -111,7 +123,6 @@ docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITO
 
 # latest 태그 푸시
 docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:latest
-
 ```
 
 ### 3-4. 푸시 확인
@@ -126,7 +137,6 @@ aws ecr describe-images \
 ```
 
 ---
-
 ## Jenkins/GitHub Actions 통합
 
 ### Jenkins Pipeline 예시
@@ -134,21 +144,18 @@ aws ecr describe-images \
 ```groovy
 pipeline {
     agent any
-
     environment {
         AWS_ACCOUNT_ID = '137068226866'
         AWS_REGION = 'ap-northeast-2'
         ECR_REPOSITORY = 'chatapp-dev'
         IMAGE_TAG = "${env.BUILD_NUMBER}"
     }
-
     stages {
         stage('Build') {
             steps {
                 sh './gradlew clean bootJar'
             }
         }
-
         stage('Docker Build') {
             steps {
                 sh """
@@ -157,23 +164,19 @@ pipeline {
                 """
             }
         }
-
         stage('Push to ECR') {
             steps {
                 sh """
                     aws ecr get-login-password --region ${AWS_REGION} | \
                       docker login --username AWS --password-stdin \
                       ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
-
                     docker tag chatapp:${IMAGE_TAG} \
                       ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${IMAGE_TAG}
-
                     docker push \
                       ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${IMAGE_TAG}
                 """
             }
         }
-
         stage('Notify CD Team') {
             steps {
                 // CD 팀에게 알림 (Slack, Email 등)
@@ -188,45 +191,36 @@ pipeline {
 
 ```yaml
 name: CI - Build and Push to ECR
-
 on:
   push:
     branches:
       - main
       - develop
-
 env:
   AWS_REGION: ap-northeast-2
   ECR_REPOSITORY: chatapp-dev
-
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
     - name: Checkout
       uses: actions/checkout@v3
-
     - name: Set up JDK 17
       uses: actions/setup-java@v3
       with:
         java-version: '17'
         distribution: 'temurin'
-
     - name: Build with Gradle
       run: ./gradlew clean bootJar
-
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v2
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
-
     - name: Login to Amazon ECR
       id: login-ecr
       uses: aws-actions/amazon-ecr-login@v1
-
     - name: Build and push Docker image
       env:
         ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
@@ -234,65 +228,63 @@ jobs:
       run: |
         docker build --platform linux/amd64 \
           -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-
         docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
           $ECR_REGISTRY/$ECR_REPOSITORY:latest
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
-
         echo "Image pushed: $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
 ```
 
 ---
-
 ## 이미지 태그 전략
 
 ### 권장 전략
 
-1. **Git Commit Hash (자동 추적)**
-   ```bash
-   IMAGE_TAG=$(git rev-parse --short HEAD)
-   # 예: git-abc1234
-   ```
+1. Git Commit Hash (자동 추적)
 
-2. **Semantic Versioning (명확한 버전)**
-   ```bash
-   IMAGE_TAG=v1.0.0
-   # v1.0.0, v1.1.0, v2.0.0
-   ```
+```bash
+IMAGE_TAG=$(git rev-parse --short HEAD)
+# 예: git-abc1234
+```
 
-3. **Build Number (CI 통합)**
-   ```bash
-   IMAGE_TAG=build-${BUILD_NUMBER}
-   # build-123, build-124
-   ```
+2. Semantic Versioning (명확한 버전)
 
-4. **Timestamp (시간 추적)**
-   ```bash
-   IMAGE_TAG=$(date +%Y%m%d-%H%M%S)
-   # 20250104-123456
-   ```
+```bash
+IMAGE_TAG=v1.0.0
+# v1.0.0, v1.1.0, v2.0.0
+```
+
+3. Build Number (CI 통합)
+
+```bash
+IMAGE_TAG=build-${BUILD_NUMBER}
+# build-123, build-124
+```
+
+4. Timestamp (시간 추적)
+
+```bash
+IMAGE_TAG=$(date +%Y%m%d-%H%M%S)
+# 20250104-123456
+```
 
 ### 비권장: latest만 사용
 
-```bash
-# 문제점:
-# - 버전 추적 불가
-# - 롤백 어려움
-# - 어떤 코드인지 알 수 없음
-```
+문제점:
+- 버전 추적 불가
+- 롤백 어려움
+- 어떤 코드인지 알 수 없음
 
 ---
-
 ## 트러블슈팅
 
 ### 1. ECR 로그인 실패
 
-```bash
-# 증상: "no basic auth credentials"
+증상: "no basic auth credentials"
 
-# 해결:
+해결:
+
+```bash
 # 1. AWS 자격증명 확인
 aws sts get-caller-identity
 
@@ -301,19 +293,21 @@ aws sts get-caller-identity
 
 ### 2. Docker 빌드 느림
 
-```bash
-# 증상: Apple Silicon Mac에서 AMD64 빌드 시 느림
+증상: Apple Silicon Mac에서 AMD64 빌드 시 느림
 
-# 해결: Docker Buildx 사용
+해결: Docker Buildx 사용
+
+```bash
 docker buildx build --platform linux/amd64 -t chatapp:v1.0.0 .
 ```
 
 ### 3. ECR 푸시 실패
 
-```bash
-# 증상: "repository does not exist"
+증상: "repository does not exist"
 
-# 해결: ECR 리포지토리 확인
+해결: ECR 리포지토리 확인
+
+```bash
 aws ecr describe-repositories --repository-names chatapp-dev --region ap-northeast-2
 
 # 없으면 생성
@@ -331,9 +325,7 @@ docker system df
 ```
 
 ---
-
 ## CI 완료 체크리스트
-
 - [ ] 코드 빌드 성공 (./gradlew bootJar)
 - [ ] Docker 이미지 빌드 성공 (--platform linux/amd64 사용)
 - [ ] ECR 로그인 성공
@@ -341,49 +333,38 @@ docker system df
 - [ ] ECR 푸시 성공
 - [ ] ECR에서 이미지 확인됨
 - [ ] CD 팀에게 알림 전달 (이미지 태그 포함)
-
 ---
 
-```
 새 이미지 준비 완료
-
 이미지 정보:
 - 리포지토리: 137068226866.dkr.ecr.ap-northeast-2.amazonaws.com/chatapp-dev
 - 태그: v1.0.0
 - 전체 URL: 137068226866.dkr.ecr.ap-northeast-2.amazonaws.com/chatapp-dev:v1.0.0
 - 빌드 시간: 2025-11-04 10:30:00 KST
 - Git Commit: abc1234
-```
 
 ---
 ## 목표
 ECR에 있는 Docker 이미지를 ECS Fargate에 배포
-
-**입력**: `137068226866.dkr.ecr.ap-northeast-2.amazonaws.com/chatapp-dev:v1.0.0`
-**결과**: 사용자가 접근 가능한 애플리케이션
-
+입력: `137068226866.dkr.ecr.ap-northeast-2.amazonaws.com/chatapp-dev:v1.0.0`
+결과: 사용자가 접근 가능한 애플리케이션
 ---
-
 ## 두 가지 배포 방법
-
 | 방법 | 도구 | 장점 | 단점 | 추천 대상 |
 |-----|------|------|------|----------|
-| **방법 1** | AWS CLI 직접 | 간단, 빠름, 즉시 적용 | 수동, Blue/Green 수동 관리 | 소규모 팀, 빠른 배포 |
-| **방법 2** | AWS CodeDeploy | Blue/Green 자동화, 롤백 자동화, 승인 단계 | 초기 설정 복잡 | 대규모 팀, 엔터프라이즈 |
-
+| 방법 1 | AWS CLI 직접 | 간단, 빠름, 즉시 적용 | 수동, Blue/Green 수동 관리 | 소규모 팀, 빠른 배포 |
+| 방법 2 | AWS CodeDeploy | Blue/Green 자동화, 롤백 자동화, 승인 단계 | 초기 설정 복잡 | 대규모 팀, 엔터프라이즈 |
 ---
-
 ## 방법 1: AWS CLI 직접 배포 (간단, 빠름)
-
 ### 특징
 - CI 팀이 ECR에 이미지 푸시 완료
 - CD 팀이 AWS CLI로 ECS 서비스 업데이트
 - 2-3분 안에 배포 완료
-
 ### 사전 준비
 
+환경 변수 설정:
+
 ```bash
-# 환경 변수 설정
 export AWS_REGION=ap-northeast-2
 export ECS_CLUSTER=chatapp-dev-cluster
 export ECS_SERVICE=chatapp-dev-service-blue  # 또는 green
@@ -392,20 +373,19 @@ export IMAGE_TAG=v1.0.0  # CI 팀에게 받은 태그
 
 ### Step 1: 배포 실행
 
+Blue 서비스에 배포 (Production, 90% 트래픽):
+
 ```bash
-# Blue 서비스에 배포 (Production, 90% 트래픽)
 aws ecs update-service \
   --cluster ${ECS_CLUSTER} \
   --service ${ECS_SERVICE} \
   --force-new-deployment \
   --region ${AWS_REGION}
-
-echo "🚀 배포 시작..."
 ```
 
-**`--force-new-deployment`의 역할:**
+--force-new-deployment의 역할:
 - 현재 Task Definition의 이미지를 다시 pull
-- ECR의 `latest` 태그가 업데이트되었다면 새 이미지 사용
+- ECR의 latest 태그가 업데이트되었다면 새 이미지 사용
 - 특정 태그 배포는 terraform으로 Task Definition 업데이트 필요
 
 ### Step 2: 배포 완료 대기
@@ -416,8 +396,6 @@ aws ecs wait services-stable \
   --cluster ${ECS_CLUSTER} \
   --services ${ECS_SERVICE} \
   --region ${AWS_REGION}
-
-echo "✅ 배포 완료!"
 ```
 
 ### Step 3: 배포 확인
@@ -448,7 +426,6 @@ ALB_DNS=$(aws elbv2 describe-load-balancers \
   --query 'LoadBalancers[0].DNSName' \
   --output text \
   --region ${AWS_REGION})
-
 echo "ALB URL: http://${ALB_DNS}"
 
 # Health Check 테스트
@@ -482,7 +459,6 @@ stage('Deploy to ECS') {
               --service chatapp-dev-service-blue \
               --force-new-deployment \
               --region ap-northeast-2
-
             aws ecs wait services-stable \
               --cluster chatapp-dev-cluster \
               --services chatapp-dev-service-blue \
@@ -490,7 +466,6 @@ stage('Deploy to ECS') {
         """
     }
 }
-
 stage('Verify Deployment') {
     steps {
         sh """
@@ -499,24 +474,20 @@ stage('Verify Deployment') {
               --query 'LoadBalancers[0].DNSName' \
               --output text \
               --region ap-northeast-2)
-
             curl -f http://\${ALB_DNS}/health || exit 1
-            echo "✅ Deployment verified!"
+            echo "Deployment verified!"
         """
     }
 }
 ```
 
 ---
-
 ## 방법 2: AWS CodeDeploy (전문적, 자동화)
-
 ### 특징
 - Blue/Green 배포 자동화
 - 자동 Health Check 및 롤백
 - 승인 단계 추가 가능
 - 배포 이력 관리
-
 ### CodeDeploy 구성 요소
 
 ```
@@ -544,7 +515,7 @@ stage('Verify Deployment') {
 
 ### appspec.yml 작성
 
-프로젝트 루트에 `appspec.yml` 생성:
+프로젝트 루트에 appspec.yml 생성:
 
 ```yaml
 version: 0.0
@@ -565,7 +536,6 @@ Resources:
             SecurityGroups:
               - "sg-xxxxx"
             AssignPublicIp: "DISABLED"
-
 Hooks:
   - BeforeInstall: "BeforeInstall"
   - AfterInstall: "AfterInstall"
@@ -646,7 +616,6 @@ stage('Deploy with CodeDeploy') {
               --region ap-northeast-2 \
               --query 'taskDefinition.taskDefinitionArn' \
               --output text)
-
             # CodeDeploy 배포
             aws deploy create-deployment \
               --application-name chatapp-ecs-app \
@@ -660,9 +629,7 @@ stage('Deploy with CodeDeploy') {
 
 
 ---
-
 ## Blue/Green 배포 전략
-
 ### 현재 구성
 
 ```
@@ -722,7 +689,6 @@ cd terraform
 # terraform.tfvars 수정
 blue_weight = 50   # Blue 50%
 green_weight = 50  # Green 50%
-
 terraform apply
 
 # 문제 없으면 Green 100%
@@ -732,7 +698,6 @@ terraform apply
 ```
 
 ---
-
 ## 롤백 가이드
 
 ### 방법 1: 이전 이미지로 롤백
@@ -786,12 +751,10 @@ cd terraform
 # terraform.tfvars
 blue_weight = 10   # Blue를 10%로
 green_weight = 90  # Green을 90%로
-
 terraform apply
 ```
 
 ---
-
 ## 자주 사용하는 명령어
 
 ```bash
@@ -814,4 +777,3 @@ aws elbv2 describe-load-balancers \
   --region ap-northeast-2
 ```
 
----
